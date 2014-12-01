@@ -133,10 +133,17 @@ object TagDiffer extends DatabaseComponent {
     def compare(contentMap: Map[Category, List[Content]]) = {
       contentMap.map { case (category, content) =>
         val contentWithErrantNewspaperTags = content.filter(_.flexiTags.other.exists(Content.isPublishingTag))
+        val discrepancy = contentWithErrantNewspaperTags.count { c =>
+          val otherTags = c.flexiTags.other.filter(Content.isPublishingTag).toSet
+          val newspaperTags = (c.flexiTags.book :: c.flexiTags.bookSection).toSet
+
+          otherTags == newspaperTags
+        }
         val sorted = contentWithErrantNewspaperTags.sortBy(_.date.getMillis)
         ScreenResult(List(
           s"newspaper tags in main tags list for ${category.toString} are: ${contentWithErrantNewspaperTags.size}",
-          s"Content date range with different tags: ${sorted.head.date} to ${sorted.last.date}"
+          s"Content date range with different tags: ${sorted.head.date} to ${sorted.last.date}",
+          s"Newspaper tags discrepancy: ${discrepancy}"
         ))
       }
     }
