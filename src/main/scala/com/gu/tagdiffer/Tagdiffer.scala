@@ -211,6 +211,7 @@ object TagDiffer extends DatabaseComponent {
     def writes(o: TagType): JsValue = JsString(o.toString)
   }
 
+  implicit val SectionFormats = Json.format[Section]
   implicit val TagFormats = Json.format[Tag]
   implicit val R2TagsFormats = Json.format[R2Tags]
   implicit val FlexiTagsFormats = Json.format[FlexiTags]
@@ -265,13 +266,17 @@ object TagDiffer extends DatabaseComponent {
     // apply comparators to data a produce a result
     val result = dataFuture.map { data =>
       comparators.foreach{ comparator =>
-        comparator.compare(data).foreach {
-          case CSVFileResult(fileName, header, lines) =>
-            val writer = new PrintWriter(s"$PREFIX/$fileName")
-            writer.println(header)
-            lines.foreach(writer.println)
-            writer.close()
-          case ScreenResult(lines) => lines.foreach(System.err.println)
+        try {
+          comparator.compare(data).foreach {
+            case CSVFileResult(fileName, header, lines) =>
+              val writer = new PrintWriter(s"$PREFIX/$fileName")
+              writer.println(header)
+              lines.foreach(writer.println)
+              writer.close()
+            case ScreenResult(lines) => lines.foreach(System.err.println)
+          }
+        } catch {
+          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator")
         }
       }
     }

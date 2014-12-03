@@ -1,11 +1,11 @@
 package com.gu.tagdiffer.database
 
-import com.gu.tagdiffer.index.model.TagType
+import com.gu.tagdiffer.index.model.{Section, TagType}
 import com.gu.tagdiffer.index.model.TagType.TagType
 import com.gu.tagdiffer.scaladb._
 
  case class ContentToTag(tagId:Long, order:Long)
- case class R2DbTag(name: String, tagType: TagType)
+ case class R2DbTag(tagType: TagType, internalName: String, externalName: String, slug: String, section: Section)
 
  class DraftContentToTagDataProvider(database: Database)
   extends ContentToTagDataProvider(database, "sql/draft-content-to-tags-query.sql")
@@ -36,7 +36,16 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
 
   protected def tagIdToTagNameFromRow(row: Row): (Long, R2DbTag) = {
     val id = row("tag_id").long
-    val name = row("tag_internal_name").string
+    val internal_name = row("tag_internal_name").string
+    val external_name = row("tag_external_name").string
+    val slug = row("slug").string
+    // Section
+    val sectionId = row("section_id").long
+    val sectionName = row("section_name").string
+    val sectionSlug = row("section_slug").string
+    val pathPrefix = row("path_prefix").string //Substring
+
+    val section = Section(sectionId, sectionName, parseCmsPath(pathPrefix), sectionSlug)
 
     val tagType =
      if (row("publication_tag").nullableLong.isDefined) TagType.Publication
@@ -50,7 +59,7 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
      else if (row("content_type_tag").nullableLong.isDefined) TagType.ContentType
      else TagType.Other
 
-    id -> R2DbTag(name, tagType)
+    id -> R2DbTag(tagType, internal_name, external_name, slug, section)
   }
 
   protected def leadTagFromRow(row: Row): (Long, Long) =
@@ -102,5 +111,13 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
     }
 
     pageToContentId
+  }
+
+  private def parseCmsPath(cmsPath: String): Option[String] = {
+    val cmsPathPattern = """/Guardian/(.*)""".r
+    cmsPath match {
+      case cmsPathPattern(path) => Some(path)
+      case _ => None
+    }
   }
 }

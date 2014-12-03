@@ -20,7 +20,8 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
 
       tagIds.map { t =>
         val r2Tag = tagMapper(t.tagId)
-        Tag(t.tagId, r2Tag.name, leadTagIds.contains(t.tagId), r2Tag.tagType, true)
+        Tag(t.tagId, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName,
+          Some(r2Tag.slug), r2Tag.section, leadTagIds.contains(t.tagId),  true)
       }
     }
   }

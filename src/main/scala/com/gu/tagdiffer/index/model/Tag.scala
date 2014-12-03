@@ -17,15 +17,32 @@ object TagType extends Enumeration {
   val Blog = Value("Blog")
 }
 
-case class Tag(tagId: Long, internalName: String, isLead: Boolean, tagType: TagType, existInR2: Boolean) {
-  override def toString: String = s"$tagId [$internalName]${if (isLead) " LEAD" else ""} $tagType${if (!existInR2) " NOR2" else ""}"
+case class Section(id: Long, name: String, pathPrefix: Option[String], slug: String) {
+  override def toString: String = s"$id name=[$name] pathPrefix=[$pathPrefix] slug=[$slug]"
+}
+
+case class Tag(tagId: Long,
+               tagType: TagType,
+               internalName: String,
+               externalName: String,
+               slug: Option[String],
+               section: Section,
+               isLead: Boolean,
+               existInR2: Boolean ) {
+  override def toString: String = s"$tagId [$internalName] [$externalName] [$slug] ${section.toString}${if (isLead) " LEAD" else ""} $tagType${if (!existInR2) " NOR2" else ""}"
 }
 
 
 object Tag {
-   def createFromFlex (tagId: Long, internalName: String, isLead: Boolean, tagType: TagType) = {
+  def createFromFlex(tagId: Long,
+                     tagType: TagType,
+                     internalName: String,
+                     externalName: String,
+                     slug: Option[String],
+                     section: Section,
+                     isLead: Boolean ) = {
     val exist = R2.cache.isR2Tag(tagId)
 
-    Tag(tagId, internalName, isLead, tagType, exist)
+    Tag(tagId, tagType, internalName, externalName, slug, section, isLead,  exist)
   }
 }
