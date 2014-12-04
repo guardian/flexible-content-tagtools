@@ -48,8 +48,8 @@ object TagDiffer extends DatabaseComponent {
     def compareDeltas(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
       val deltaCount = deltas.groupBy(delta => (delta._1, delta._2)).mapValues(v => (v.size, v.head._3)).toList.sortBy(_._2).reverse
       val lines = deltaCount.map { case ((r2, flex), (count, contentID)) =>
-        val r2Tags = r2.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
-        val flexTags = flex.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
+        val r2Tags = r2.toList.sortBy(_.internalName).map(_.toString.mkString("\"", "\n", "\""))
+        val flexTags = flex.toList.sortBy(_.internalName).map(_.toString.mkString("\"", "\n", "\""))
         s"$r2Tags,$flexTags,$count, ${Config.composerContentPrefix}$contentID"
       }
       CSVFileResult(s"$name-delta-report.csv", "Only R2, Only Flex, Count, Example Content Id", lines)
@@ -211,6 +211,7 @@ object TagDiffer extends DatabaseComponent {
     def writes(o: TagType): JsValue = JsString(o.toString)
   }
 
+  implicit val SectionFormats = Json.format[Section]
   implicit val TagFormats = Json.format[Tag]
   implicit val R2TagsFormats = Json.format[R2Tags]
   implicit val FlexiTagsFormats = Json.format[FlexiTags]
@@ -265,13 +266,17 @@ object TagDiffer extends DatabaseComponent {
     // apply comparators to data a produce a result
     val result = dataFuture.map { data =>
       comparators.foreach{ comparator =>
-        comparator.compare(data).foreach {
-          case CSVFileResult(fileName, header, lines) =>
-            val writer = new PrintWriter(s"$PREFIX/$fileName")
-            writer.println(header)
-            lines.foreach(writer.println)
-            writer.close()
-          case ScreenResult(lines) => lines.foreach(System.err.println)
+        try {
+          comparator.compare(data).foreach {
+            case CSVFileResult(fileName, header, lines) =>
+              val writer = new PrintWriter(s"$PREFIX/$fileName")
+              writer.println(header)
+              lines.foreach(writer.println)
+              writer.close()
+            case ScreenResult(lines) => lines.foreach(System.err.println)
+          }
+        } catch {
+          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator")
         }
       }
     }
