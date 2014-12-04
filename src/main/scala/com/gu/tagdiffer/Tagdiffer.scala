@@ -48,8 +48,8 @@ object TagDiffer extends DatabaseComponent {
     def compareDeltas(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
       val deltaCount = deltas.groupBy(delta => (delta._1, delta._2)).mapValues(v => (v.size, v.head._3)).toList.sortBy(_._2).reverse
       val lines = deltaCount.map { case ((r2, flex), (count, contentID)) =>
-        val r2Tags = r2.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
-        val flexTags = flex.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
+        val r2Tags = r2.toList.sortBy(_.internalName).map(_.toString.mkString("\"", "\n", "\""))
+        val flexTags = flex.toList.sortBy(_.internalName).map(_.toString.mkString("\"", "\n", "\""))
         s"$r2Tags,$flexTags,$count, ${Config.composerContentPrefix}$contentID"
       }
       CSVFileResult(s"$name-delta-report.csv", "Only R2, Only Flex, Count, Example Content Id", lines)

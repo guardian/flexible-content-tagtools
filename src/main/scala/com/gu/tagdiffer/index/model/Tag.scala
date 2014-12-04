@@ -29,7 +29,7 @@ case class Tag(tagId: Long,
                section: Section,
                isLead: Boolean,
                existInR2: Boolean ) {
-  override def toString: String = s"$tagId [$internalName] [$externalName] [$slug] ${section.toString}${if (isLead) " LEAD" else ""} $tagType${if (!existInR2) " NOR2" else ""}"
+  override def toString: String = s"$tagId [$internalName] [$externalName] [$slug] ${if (isLead) " LEAD" else ""} $tagType${if (!existInR2) " NOR2" else ""}"
 }
 
 
