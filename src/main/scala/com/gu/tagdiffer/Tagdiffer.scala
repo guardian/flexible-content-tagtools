@@ -31,6 +31,7 @@ object TagDiffer extends DatabaseComponent {
     def lines:Iterable[String]
   }
   case class CSVFileResult(fileName:String, header:String, lines:Iterable[String]) extends ComparatorResult
+  case class JSONFileResult(fileName:String, lines:Iterable[String]) extends ComparatorResult
   case class ScreenResult(lines:Iterable[String]) extends ComparatorResult
 
   trait ContentComparator {
@@ -43,6 +44,33 @@ object TagDiffer extends DatabaseComponent {
         s"${flex.map(_.internalName)}, ${r2.map(_.internalName).mkString(";")}, $count"
       }
       CSVFileResult(s"${ContentCategory.toString()}_${tagType.toString}_tag_report.csv", header, lines)
+    }
+
+    def compareAndMapDifferentTagIds(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
+      val result = deltas.flatMap { e =>
+        val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication || tag.tagType != Contributor)
+        val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication || tag.tagType != Contributor)
+
+        val diffIdOnly = for {
+          r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
+
+          if ((r2t.internalName == ft.internalName)
+            && (r2t.tagId != ft.tagId))
+        } yield {
+          (ft.tagId, r2t.tagId, ft.externalName, r2t.internalName, ft.externalName, r2t.externalName,
+            ft.tagType, r2t.tagType, ft.section.id, r2t.section.id, ft.section.name, r2t.section.name)
+        }
+
+        diffIdOnly
+      }.toSet
+
+      val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
+        "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
+      val lines = result map { t =>
+        s"${t._1}, ${t._2}, ${t._3}, ${t._4}, ${t._5}, ${t._6}, ${t._7}, ${t._8}, ${t._9}, ${t._10}, ${t._11}, ${t._12}"
+      }
+
+      CSVFileResult(s"$name.csv", header, lines)
     }
 
     def compareDeltas(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
@@ -168,12 +196,12 @@ object TagDiffer extends DatabaseComponent {
 
   val setOfDeltasWithoutRemappedTags = new ContentComparator {
     def compare(contentMap: Map[Category, List[Content]]): Iterable[ComparatorResult] = {
-      contentMap.map { case (category, contentList) =>
-        val deltas = r2FlexDiffTuples(contentList).filterNot { case (r2Only, flexOnly, contentId) =>
+      val deltas = contentMap.flatMap { case (category, contentList) =>
+        r2FlexDiffTuples(contentList).filterNot { case (r2Only, flexOnly, contentId) =>
             r2Only.map(_.copy(tagId = 0)) == flexOnly.map(_.copy(tagId = 0))
         }
-        compareDeltas(deltas, s"ignore-id-all-tags-${category.toString}")
       }
+      Some(compareAndMapDifferentTagIds(deltas.toList, s"updated-tags-map"))
     }
   }
   // The list of comparators to apply to data
@@ -271,6 +299,10 @@ object TagDiffer extends DatabaseComponent {
             case CSVFileResult(fileName, header, lines) =>
               val writer = new PrintWriter(s"$PREFIX/$fileName")
               writer.println(header)
+              lines.foreach(writer.println)
+              writer.close()
+            case JSONFileResult(fileName, lines) =>
+              val writer = new PrintWriter(s"$PREFIX/$fileName")
               lines.foreach(writer.println)
               writer.close()
             case ScreenResult(lines) => lines.foreach(System.err.println)
