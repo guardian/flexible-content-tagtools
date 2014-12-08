@@ -47,9 +47,12 @@ object TagDiffer extends DatabaseComponent {
     }
 
     def compareAndMapDifferentTagIds(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
+      val r2Tags = deltas.flatMap(_._1).toSet
+      val flexiTags = deltas.flatMap(_._2).toSet
+
       val result = deltas.flatMap { e =>
-        val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication || tag.tagType != Contributor)
-        val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication || tag.tagType != Contributor)
+        val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
+        val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
 
         val diffIdOnly = for {
           r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
@@ -57,17 +60,21 @@ object TagDiffer extends DatabaseComponent {
           if ((r2t.internalName == ft.internalName)
             && (r2t.tagId != ft.tagId))
         } yield {
-          (ft.tagId, r2t.tagId, ft.externalName, r2t.internalName, ft.externalName, r2t.externalName,
-            ft.tagType, r2t.tagType, ft.section.id, r2t.section.id, ft.section.name, r2t.section.name)
+          ft.tagId -> r2t.tagId
         }
 
-        diffIdOnly
+        diffIdOnly.toSet
       }.toSet
 
       val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
         "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
+
       val lines = result map { t =>
-        s"${t._1}, ${t._2}, ${t._3}, ${t._4}, ${t._5}, ${t._6}, ${t._7}, ${t._8}, ${t._9}, ${t._10}, ${t._11}, ${t._12}"
+        val ft = flexiTags.find(_.tagId == t._1).get
+        val r2t = r2Tags.find(_.tagId == t._2).get
+
+        s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
+          s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
       }
 
       CSVFileResult(s"$name.csv", header, lines)
