@@ -22,13 +22,8 @@ case class FlexiContent(
 )
 
 object FlexiContent {
-  var counter = 0;
   implicit object ComposerContentBSONRreader extends BSONDocumentReader[FlexiContent] {
     def read(doc: BSONDocument): FlexiContent = {
-      counter += 1
-
-      if (counter % 1000 == 0)
-        println(s"got $counter contents")
 
       val contentId = doc.getAs[String]("_id").get
       try {
