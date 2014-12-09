@@ -8,7 +8,8 @@ case class R2Tag()
 
 case class R2Cache(contentPageId: Map[Long, Long],
                    leadTags: Map[Long, List[Long]],
-                   contentToTag: Map[Long, List[ContentToTag]])
+                   contentToTag: Map[Long, List[ContentToTag]],
+                   lastModified: Map[Long, Long])
 
 case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache) {
 
@@ -56,8 +57,14 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
       System.err.println(s"Cached live content tag map (${livectt.size})")
       val draftctt = retrieveTagToDraftContentFromR2()
       System.err.println(s"Cached live content tag map (${draftctt.size})")
-      val liveCache = R2Cache(livecpi, liveLead, livectt)
-      val draftCache = R2Cache(draftcpi, draftLead, draftctt)
+      val liveCache = R2Cache(livecpi.map(_.pageAndContentId).toMap,
+                              liveLead,
+                              livectt,
+                              livecpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
+      val draftCache = R2Cache(draftcpi.map(_.pageAndContentId).toMap,
+                               draftLead,
+                               draftctt,
+                               draftcpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
       internalCache = Some(R2(tags, liveCache, draftCache))
     }
 
@@ -78,12 +85,12 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
     provider.getLeadTag()
   }
 
-  private def retrieveLivePageAndContentIdFromR2(): Map[Long, Long] = {
+  private def retrieveLivePageAndContentIdFromR2(): List[ContentInfo] = {
     val provider = new LivePageAndContentIdDataProvider(database)
     provider.getPageAndContentId()
   }
 
-  private def retrieveDraftPageAndContentIdFromR2(): Map[Long, Long] = {
+  private def retrieveDraftPageAndContentIdFromR2(): List[ContentInfo] = {
     val provider = new DraftPageAndContentIdDataProvider(database)
     provider.getPageAndContentId()
   }

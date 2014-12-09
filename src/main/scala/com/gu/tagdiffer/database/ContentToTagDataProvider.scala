@@ -4,6 +4,7 @@ import com.gu.tagdiffer.index.model.{Section, TagType}
 import com.gu.tagdiffer.index.model.TagType.TagType
 import com.gu.tagdiffer.scaladb._
 
+ case class ContentInfo (pageAndContentId: (Long, Long), lastModified: Long)
  case class ContentToTag(tagId:Long, order:Long)
  case class R2DbTag(tagType: TagType, internalName: String, externalName: String, slug: String, section: Section)
 
@@ -65,8 +66,8 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
   protected def leadTagFromRow(row: Row): (Long, Long) =
     row("content_id").long -> row("tag_id").long
 
-  protected def pageAndContentIdFromRow(row: Row): (Long, Long) =
-    row("page_id").long -> row("content_id").long
+  protected def pageContentIdLastModifiedFromRow(row: Row): ContentInfo =
+    ContentInfo((row("page_id").long -> row("content_id").long), row("last_modified").long)
 
   def getContentToTag(): Map[Long, List[ContentToTag]] = {
     val query = StoredQuery.fromClasspath(queryFilename)
@@ -103,11 +104,11 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
     leadT
   }
 
-  def getPageAndContentId(): Map[Long, Long] = {
+  def getPageAndContentId(): List[ContentInfo] = {
     val query = StoredQuery.fromClasspath(queryFilename)
 
     val pageToContentId = database { con =>
-      con.query(query, pageAndContentIdFromRow).toMap
+      con.query(query, pageContentIdLastModifiedFromRow).toList
     }
 
     pageToContentId
