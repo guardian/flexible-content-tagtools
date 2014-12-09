@@ -12,7 +12,8 @@ case class FlexiContent(
   contentId: String,
   pageId: Option[String],
   contentType: String,
-  date: DateTime,
+  created: DateTime,
+  lastModified: DateTime,
   mainTags: Option[List[Tag]],
   contributorTags: Option[List[Tag]],
   publicationTags: Option[List[Tag]],
@@ -33,12 +34,16 @@ object FlexiContent {
       try {
         val taxonomy = doc.getAs[BSONDocument]("taxonomy")
         val newspaper = taxonomy.flatMap(_.getAs[BSONDocument]("newspaper"))
+        val contentChangeDetails = doc.getAs[BSONDocument]("contentChangeDetails").flatMap(c => c.getAs[BSONDocument]("created")).get
         FlexiContent(
         contentId,
         doc.getAs[BSONDocument]("identifiers").flatMap(_.getAs[String]("pageId")).map(i => i),
-        doc.getAs[String]("type").get, {
-          val ccd = doc.getAs[BSONDocument]("contentChangeDetails").flatMap(c => c.getAs[BSONDocument]("created")).get
-          val timestamp = ccd.getAs[BSONDateTime]("date").get
+        doc.getAs[String]("type").get,
+        {
+          val timestamp = contentChangeDetails.getAs[BSONDateTime]("date").get
+          new DateTime(timestamp.value)
+        }, {
+          val timestamp = contentChangeDetails.getAs[BSONDateTime]("date").get
           new DateTime(timestamp.value)
         }, {
           taxonomy.flatMap(_.getAs[BSONArray]("tags")).map { bsArray =>

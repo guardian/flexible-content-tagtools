@@ -106,7 +106,7 @@ object TagDiffer extends DatabaseComponent {
     def compare(contentMap: Map[Category, List[Content]]) = {
       contentMap.flatMap { case (category, content) =>
         val contentCategory = category
-        val yearToContent = content.groupBy(_.date.getYear)
+        val yearToContent = content.groupBy(_.created.getYear)
         // Generate a separate .csv for each year
         yearToContent.map { ytc =>
           val totalContent = ytc._2.length
@@ -167,10 +167,10 @@ object TagDiffer extends DatabaseComponent {
 
           otherTags == newspaperTags
         }
-        val sorted = contentWithErrantNewspaperTags.sortBy(_.date.getMillis)
+        val sorted = contentWithErrantNewspaperTags.sortBy(_.created.getMillis)
         ScreenResult(List(
           s"newspaper tags in main tags list for ${category.toString} are: ${contentWithErrantNewspaperTags.size}",
-          s"Content date range with different tags: ${sorted.head.date} to ${sorted.last.date}",
+          s"Content date range with different tags: ${sorted.head.created} to ${sorted.last.created}",
           s"Newspaper tags discrepancy: ${discrepancy}"
         ))
       }
