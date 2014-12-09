@@ -46,8 +46,8 @@ object mongoConnect extends Loggable {
  private def getContent(enumerator: Enumerator[FlexiContent], category: Category): Future[List[Content]] = {
    val processDocuments: Iteratee[FlexiContent, List[Content]] = Iteratee.fold(List.empty[Content]) { (acc, content) =>
      val c = if (content.pageId.isDefined)
-       Content.lookupR2(content.pageId.get, content.contentId, content.contentType, content.date, category,
-         FlexiTags(content.mainTags.getOrElse(List()), content.contributorTags.getOrElse(List()),
+       Content.lookupR2(content.pageId.get, content.contentId, content.contentType, content.created, content.lastModified,
+         category, FlexiTags(content.mainTags.getOrElse(List()), content.contributorTags.getOrElse(List()),
          content.publicationTags.getOrElse(List()), content.bookTags.getOrElse(List()),
          content.sectionTags.getOrElse(List())))
      else None

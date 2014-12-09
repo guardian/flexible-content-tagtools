@@ -3,6 +3,7 @@ package com.gu.tagdiffer
 import com.gu.tagdiffer.component.DatabaseComponent
 import com.gu.tagdiffer.database._
 import com.gu.tagdiffer.index.model.Tag
+import org.joda.time.DateTime
 
 case class R2Tag()
 
@@ -36,6 +37,22 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
   }
 
   def isR2Tag(tagID: Long): Boolean = tagMapper.contains(tagID)
+
+  private def lookupR2LastModified(pageId: Long, cache: R2Cache): DateTime = {
+    val contentId = cache.contentPageId.get(pageId)
+
+    val timestamp = contentId.map(c => cache.lastModified.get(c).get).get
+
+    new DateTime(timestamp)
+  }
+
+  def lookupR2DraftLastModified(id: String): DateTime = {
+    lookupR2LastModified(id.toLong, draftCache)
+  }
+
+  def lookupR2LiveLastModified(id: String): DateTime = {
+    lookupR2LastModified(id.toLong, liveCache)
+  }
 }
   object R2 extends DatabaseComponent {
 

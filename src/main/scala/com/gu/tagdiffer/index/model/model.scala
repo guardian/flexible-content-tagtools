@@ -12,7 +12,9 @@ object ContentCategory extends Enumeration {
 case class Content(pageid: String,
                    contentId: String,
                    contentType: String,
-                   date: DateTime,
+                   created: DateTime,
+                   lastModifiedR2: DateTime,
+                   lastModifiedFlexi: DateTime,
                    flexiTags: FlexiTags,
                    r2Tags: R2Tags) {
 
@@ -45,12 +47,15 @@ object Content {
   import TagType._
   def isPublishingTag(tag: Tag) = Set(Publication, Book, BookSection).contains(tag.tagType)
 
-  def lookupR2(pageId: String, contentId: String, contentType: String, date: DateTime, contentCategory: ContentCategory.Category, flexiTags: FlexiTags): Option[Content] = {
+  def lookupR2(pageId: String, contentId: String, contentType: String, created: DateTime, lastModifiedFlexi: DateTime, contentCategory: ContentCategory.Category, flexiTags: FlexiTags): Option[Content] = {
     val r2Tags =
       if (contentCategory == ContentCategory.Live) R2.cache.lookupR2LiveTags(pageId).map(R2Tags)
       else R2.cache.lookupR2DraftTags(pageId).map(R2Tags)
 
-    r2Tags.map(Content(pageId, contentId, contentType, date, flexiTags, _))
+    val lastModifiedR2 =  if (contentCategory == ContentCategory.Live) R2.cache.lookupR2LiveLastModified(pageId)
+    else R2.cache.lookupR2DraftLastModified(pageId)
+
+    r2Tags.map(Content(pageId, contentId, contentType, created, lastModifiedFlexi, lastModifiedR2, flexiTags, _))
   }
 }
 
