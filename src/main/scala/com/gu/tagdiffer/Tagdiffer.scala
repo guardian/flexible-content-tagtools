@@ -70,13 +70,19 @@ object TagDiffer extends DatabaseComponent {
         "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
 
       val lines = result map { t =>
-        val ft = flexiTags.find(_.tagId == t._1).get
         val r2t = r2Tags.find(_.tagId == t._2).get
+        val ftOpt = flexiTags.find(tag => (tag.tagId == t._1) && (tag.section.id != r2t.section.id)).map(tg => tg)
 
-        s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
-          s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
+        val aLine = if (ftOpt.isDefined) {
+          val ft = ftOpt.get
+          s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
+            s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
+        } else " "
+
+        aLine
       }
 
+      lines.filterNot(_ != " ")
       CSVFileResult(s"$name.csv", header, lines)
     }
 
@@ -315,7 +321,7 @@ object TagDiffer extends DatabaseComponent {
             case ScreenResult(lines) => lines.foreach(System.err.println)
           }
         } catch {
-          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator")
+          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator}")
         }
       }
     }
