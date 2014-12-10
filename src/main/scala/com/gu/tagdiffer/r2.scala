@@ -10,7 +10,7 @@ case class R2Tag()
 case class R2Cache(contentPageId: Map[Long, Long],
                    leadTags: Map[Long, List[Long]],
                    contentToTag: Map[Long, List[ContentToTag]],
-                   lastModified: Map[Long, Long])
+                   lastModified: Map[Long, DateTime])
 
 case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache) {
 
@@ -104,12 +104,12 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
 
   private def retrieveLivePageAndContentIdFromR2(): List[ContentInfo] = {
     val provider = new LivePageAndContentIdDataProvider(database)
-    provider.getPageAndContentId()
+    provider.getPageContentIdAndLastModified()
   }
 
   private def retrieveDraftPageAndContentIdFromR2(): List[ContentInfo] = {
     val provider = new DraftPageAndContentIdDataProvider(database)
-    provider.getPageAndContentId()
+    provider.getPageContentIdAndLastModified()
   }
 
   private def retrieveTagToLiveContentFromR2(): Map[Long, List[ContentToTag]] = {
