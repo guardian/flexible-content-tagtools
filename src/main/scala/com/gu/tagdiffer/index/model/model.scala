@@ -52,8 +52,9 @@ object Content {
       if (contentCategory == ContentCategory.Live) R2.cache.lookupR2LiveTags(pageId).map(R2Tags)
       else R2.cache.lookupR2DraftTags(pageId).map(R2Tags)
 
-    val lastModifiedR2 =  if (contentCategory == ContentCategory.Live) R2.cache.lookupR2LiveLastModified(pageId)
-    else R2.cache.lookupR2DraftLastModified(pageId)
+    val lastModifiedR2 =
+      if (contentCategory == ContentCategory.Live) R2.cache.lookupR2LiveLastModified(pageId)
+      else R2.cache.lookupR2DraftLastModified(pageId)
 
     r2Tags.map(Content(pageId, contentId, contentType, created, lastModifiedFlexi, lastModifiedR2, flexiTags, _))
   }
