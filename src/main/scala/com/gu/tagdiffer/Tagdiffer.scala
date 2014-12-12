@@ -2,6 +2,7 @@ package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
 import java.util.NoSuchElementException
+import com.fasterxml.jackson.core.JsonParseException
 import com.gu.tagdiffer.component.DatabaseComponent
 import com.gu.tagdiffer.index.model.ContentCategory._
 import com.gu.tagdiffer.index.model.TagType
@@ -191,12 +192,12 @@ object TagDiffer extends DatabaseComponent {
     }.toMap
   }
 
-  def compareAndMapDifferentTagIds(oldToNewTagIdMap:Map[Long, Long], name:String): ComparatorResult = {
+  def compareAndMapDifferentTagIds(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap:Map[Long, Long], name:String): ComparatorResult = {
     val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
       "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
 
-    val r2Tags: Set[Tag] = R2.cache.tagIdToTag.values.toSet
-    val flexiTags: Set[Tag] = Set.empty
+    val r2Tags = deltas.flatMap(_._1).toSet
+    val flexiTags = deltas.flatMap(_._2).toSet
 
     val lines = oldToNewTagIdMap flatMap { case(oldId, newId) =>
       val r2t = r2Tags.find(_.tagId == newId).get
@@ -217,7 +218,11 @@ object TagDiffer extends DatabaseComponent {
 
   val setOfDeltasWithoutRemappedTags = new ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
-      Some(compareAndMapDifferentTagIds(oldToNewTagIdMap, s"updated-tags-map"))
+      val deltas = contentMap flatMap { case(category, contentList) =>
+        r2FlexDiffTuples(contentList)
+      }
+
+      Some(compareAndMapDifferentTagIds(deltas.map(item => (item._1, item._2)).toList, oldToNewTagIdMap, s"updated-tags-map"))
     }
   }
   // The list of comparators to apply to data
@@ -282,7 +287,13 @@ object TagDiffer extends DatabaseComponent {
       System.err.println(s"Attempting to read and parse content from $file")
       val contentLines = Source.fromFile(file).getLines()
       val content = contentLines.flatMap { line =>
-        Json.fromJson[Content](Json.parse(line)).asOpt
+        try {
+          Json.fromJson[Content](Json.parse(line)).asOpt
+        } catch {
+          case NonFatal(e) => {
+            None
+          }
+        }
       }
       val contentList = content.toList
       System.err.println(s"Successfully read and parsed content from $file")
