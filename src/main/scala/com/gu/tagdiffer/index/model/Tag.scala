@@ -21,17 +21,28 @@ case class Section(id: Long, name: String, pathPrefix: Option[String], slug: Str
   override def toString: String = s"$id name=[$name] pathPrefix=[$pathPrefix] slug=[$slug]"
 }
 
+case class Tagging(tag: Tag, isLead: Boolean) {
+  def tagType = tag.tagType
+  def tagId = tag.tagId
+  def internalName = tag.internalName
+  def externalName = tag.externalName
+  def slug = tag.slug
+  def section = tag.section
+
+  override def toString: String =
+    s"${tag.tagId} [${tag.internalName}] [${tag.externalName}] [${tag.slug}] "+
+      s"${if (isLead) " LEAD" else ""} ${tag.tagType}${if (!tag.existInR2) " NOR2" else ""}"
+
+  def setIdToZero = Tagging(tag.copy(tagId=0), isLead)
+}
+
 case class Tag(tagId: Long,
                tagType: TagType,
                internalName: String,
                externalName: String,
                slug: Option[String],
                section: Section,
-               isLead: Boolean,
-               existInR2: Boolean ) {
-  override def toString: String = s"$tagId [$internalName] [$externalName] [$slug] ${if (isLead) " LEAD" else ""} $tagType${if (!existInR2) " NOR2" else ""}"
-}
-
+               existInR2: Boolean)
 
 object Tag {
   def createFromFlex(tagId: Long,
@@ -39,10 +50,9 @@ object Tag {
                      internalName: String,
                      externalName: String,
                      slug: Option[String],
-                     section: Section,
-                     isLead: Boolean ) = {
+                     section: Section ) = {
     val exist = R2.cache.isR2Tag(tagId)
 
-    Tag(tagId, tagType, internalName, externalName, slug, section, isLead,  exist)
+    Tag(tagId, tagType, internalName, externalName, slug, section, exist)
   }
 }

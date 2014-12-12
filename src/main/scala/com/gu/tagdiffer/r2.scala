@@ -2,7 +2,7 @@ package com.gu.tagdiffer
 
 import com.gu.tagdiffer.component.DatabaseComponent
 import com.gu.tagdiffer.database._
-import com.gu.tagdiffer.index.model.Tag
+import com.gu.tagdiffer.index.model.{Tagging, Tag}
 import org.joda.time.DateTime
 
 case class R2Tag()
@@ -14,25 +14,29 @@ case class R2Cache(contentPageId: Map[Long, Long],
 
 case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache) {
 
-  private def lookupR2Tags(pageId: Long, cache: R2Cache): Option[List[Tag]] = {
+  lazy val tagIdToTag = tagMapper.map { case (id, r2Tag) =>
+    id -> Tag(id, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName,
+      Some(r2Tag.slug), r2Tag.section, existInR2 = true)
+  }
+
+  private def lookupR2Tags(pageId: Long, cache: R2Cache): Option[List[Tagging]] = {
     val contentId = cache.contentPageId.get(pageId)
     contentId.map { cId =>
       val tagIds = cache.contentToTag.getOrElse(cId, Nil)
       val leadTagIds = cache.leadTags.getOrElse(cId, Nil)
 
       tagIds.map { t =>
-        val r2Tag = tagMapper(t.tagId)
-        Tag(t.tagId, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName,
-          Some(r2Tag.slug), r2Tag.section, leadTagIds.contains(t.tagId),  true)
+        val tag = tagIdToTag(t.tagId)
+        Tagging(tag, leadTagIds.contains(t.tagId))
       }
     }
   }
 
-  def lookupR2DraftTags(id: String): Option[List[Tag]] = {
+  def lookupR2DraftTags(id: String): Option[List[Tagging]] = {
     lookupR2Tags(id.toLong, draftCache)
   }
 
-  def lookupR2LiveTags(id: String): Option[List[Tag]] = {
+  def lookupR2LiveTags(id: String): Option[List[Tagging]] = {
     lookupR2Tags(id.toLong, liveCache)
   }
 
@@ -40,6 +44,8 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
 
   private def lookupR2LastModified(pageId: Long, cache: R2Cache): DateTime = {
     val contentId = cache.contentPageId.get(pageId)
+
+    //val t = contentId.map(key => cache.lastModified.get(key).orElse(None)).getOrElse(None)
 
     val timestamp = contentId.map(c => cache.lastModified.get(c).get).get
 

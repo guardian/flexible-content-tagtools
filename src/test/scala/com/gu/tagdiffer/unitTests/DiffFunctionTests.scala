@@ -1,20 +1,20 @@
 package com.gu.tagdiffer.unitTests
 
-import com.gu.tagdiffer.index.model.{Tag, Section, FlexiTags, R2Tags, Content}
+import com.gu.tagdiffer.index.model._
 import com.gu.tagdiffer.index.model.TagType._
 import org.joda.time.DateTime
-import org.scalatest._
+import org.scalatest.{FeatureSpec, GivenWhenThen}
 import org.scalatest.matchers.ShouldMatchers
 
 class DiffFunctionTests extends FeatureSpec with GivenWhenThen with ShouldMatchers{
   val section = Section(8, "test section", Some("testSectionPath"), "section")
-  val mainTag = Tag(1, Other, "tag 2", "tag", None,  section, isLead = false, true)
-  val leadTag = Tag(2, Other, "tag 3", "tag", None, section, isLead = true, true)
-  val contributorTag = Tag(3, Contributor, "tag 4", "tag", None, section, isLead = false, true)
-  val contributorTag2 = Tag(4, Contributor, "tag 5", "tag", None, section, isLead = false, true)
-  val publicationTag = Tag(5, Publication, "tag 6", "tag", None, section, isLead = false, true)
-  val bookTag = Tag(6, Book, "tag 7", "tag", None, section, isLead = false, true)
-  val bookSectionTag = Tag(7, BookSection, "tag 8", "tag", None, section, isLead = false, true)
+  val mainTag = Tagging(Tag(1, Other, "tag 2", "tag", None,  section, true), false)
+  val leadTag = Tagging(Tag(2, Other, "tag 3", "tag", None, section, true), true)
+  val contributorTag = Tagging(Tag(3, Contributor, "tag 4", "tag", None, section, true), false)
+  val contributorTag2 =Tagging( Tag(4, Contributor, "tag 5", "tag", None, section, true), false)
+  val publicationTag = Tagging(Tag(5, Publication, "tag 6", "tag", None, section, true), false)
+  val bookTag = Tagging(Tag(6, Book, "tag 7", "tag", None, section, true), false)
+  val bookSectionTag = Tagging(Tag(7, BookSection, "tag 8", "tag", None, section, true), false)
   val createTimestamp = new DateTime()
   val lastModified = new DateTime()
 

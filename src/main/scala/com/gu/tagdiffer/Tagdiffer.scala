@@ -35,9 +35,9 @@ object TagDiffer extends DatabaseComponent {
   case class ScreenResult(lines:Iterable[String]) extends ComparatorResult
 
   trait ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]): Iterable[ComparatorResult]
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult]
 
-    def comparePermutations(tagDiff: List[(Option[Tag], Set[Tag])], tagType: TagType): ComparatorResult = {
+    def comparePermutations(tagDiff: List[(Option[Tagging], Set[Tagging])], tagType: TagType): ComparatorResult = {
       val tagDiffCount = tagDiff.groupBy(tag => tag).mapValues(_.size)
       val header = "Flexible, R2, Count"
       val lines = tagDiffCount.toList.sortBy(_._2).reverse map { case ((flex, r2), count) =>
@@ -46,47 +46,7 @@ object TagDiffer extends DatabaseComponent {
       CSVFileResult(s"${ContentCategory.toString()}_${tagType.toString}_tag_report.csv", header, lines)
     }
 
-    def compareAndMapDifferentTagIds(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
-      val r2Tags = deltas.flatMap(_._1).toSet
-      val flexiTags = deltas.flatMap(_._2).toSet
-
-      val result = deltas.flatMap { e =>
-        val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
-        val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
-
-        val diffIdOnly = for {
-          r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
-
-          if ((r2t.internalName == ft.internalName)
-            && (r2t.tagId != ft.tagId))
-        } yield {
-          ft.tagId -> r2t.tagId
-        }
-
-        diffIdOnly.toSet
-      }.toSet
-
-      val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
-        "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
-
-      val lines = result map { t =>
-        val r2t = r2Tags.find(_.tagId == t._2).get
-        val ftOpt = flexiTags.find(tag => (tag.tagId == t._1) && (tag.section.id != r2t.section.id)).map(tg => tg)
-
-        val aLine = if (ftOpt.isDefined) {
-          val ft = ftOpt.get
-          s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
-            s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
-        } else " "
-
-        aLine
-      }
-
-      lines.filterNot(_ != " ")
-      CSVFileResult(s"$name.csv", header, lines)
-    }
-
-    def compareDeltas(deltas: List[(Set[Tag],Set[Tag], String)], name:String): ComparatorResult = {
+    def compareDeltas(deltas: List[(Set[Tagging],Set[Tagging], String)], name:String): ComparatorResult = {
       val deltaCount = deltas.groupBy(delta => (delta._1, delta._2)).mapValues(v => (v.size, v.head._3)).toList.sortBy(_._2).reverse
       val lines = deltaCount.map { case ((r2, flex), (count, contentID)) =>
         val r2Tags = r2.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
@@ -98,7 +58,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val summaryDiff = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.map { c =>
         val (cat, contents) = c
         val nonPubDiffContent = contents.filter(_.isDifferent(_.allTags.filterNot(Content.isPublishingTag)))
@@ -116,7 +76,7 @@ object TagDiffer extends DatabaseComponent {
    * map these numbers to the number of contents that have the same number of diff tags
    */
   val numberDiffByYear = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.flatMap { case (category, content) =>
         val contentCategory = category
         val yearToContent = content.groupBy(_.created.getYear)
@@ -138,7 +98,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val publicationTagDiffs = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.map { case (category, content) =>
         val pubTagDiff = content.filter(_.isDifferent(_.publications)).map { c =>
           (c.flexiTags.publications.headOption, c.r2Tags.publications.toSet)
@@ -149,7 +109,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val bookTagDiffs = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.map { case (category, content) =>
         val bookTagDiff = content.filter(_.isDifferent(_.book)).map { c =>
           (c.flexiTags.book.headOption, c.r2Tags.book.toSet)
@@ -160,7 +120,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val sectionTagDiffs = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.map { case (category, content) =>
         val sectionTagDiff = content.filter(_.isDifferent(_.bookSection)).map { c =>
           (c.flexiTags.bookSection.headOption, c.r2Tags.bookSection.toSet)
@@ -171,7 +131,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val flexiNewspaperDuplication = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]) = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]) = {
       contentMap.map { case (category, content) =>
         val contentWithErrantNewspaperTags = content.filter(_.flexiTags.other.exists(Content.isPublishingTag))
         val discrepancy = contentWithErrantNewspaperTags.count { c =>
@@ -190,7 +150,7 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  def r2FlexDiffTuples(contentList: List[Content]) = contentList.map { content =>
+  def r2FlexDiffTuples(contentList: List[Content]): List[(Set[Tagging], Set[Tagging], ContentId)] = contentList.map { content =>
     val r2TagSet = content.r2Tags.allTags.toSet
     val flexTagSet = content.flexiTags.allTags.toSet
     val onlyR2 = r2TagSet diff flexTagSet
@@ -199,7 +159,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   val setOfDeltas = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]): Iterable[ComparatorResult] = {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
       contentMap.map { case (category, contentList) =>
         val deltas = r2FlexDiffTuples(contentList)
         compareDeltas(deltas, s"all-tags-${category.toString}")
@@ -207,14 +167,57 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  val setOfDeltasWithoutRemappedTags = new ContentComparator {
-    def compare(contentMap: Map[Category, List[Content]]): Iterable[ComparatorResult] = {
-      val deltas = contentMap.flatMap { case (category, contentList) =>
-        r2FlexDiffTuples(contentList).filterNot { case (r2Only, flexOnly, contentId) =>
-            r2Only.map(_.copy(tagId = 0)) == flexOnly.map(_.copy(tagId = 0))
-        }
+  def computeOldToNewTagIdMap(contentMap: Map[Category, List[Content]]):Map[Long, Long] = {
+    val deltas = contentMap.flatMap { case (category, contentList) =>
+      r2FlexDiffTuples(contentList).filterNot { case (r2Only, flexOnly, contentId) =>
+        r2Only.map(_.setIdToZero) == flexOnly.map(_.setIdToZero)
       }
-      Some(compareAndMapDifferentTagIds(deltas.toList, s"updated-tags-map"))
+    }
+
+    deltas.flatMap { e =>
+      val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
+      val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
+
+      val diffIdOnly = for {
+        r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
+
+        if ((r2t.internalName == ft.internalName)
+          && (r2t.tagId != ft.tagId))
+      } yield {
+        ft.tagId -> r2t.tagId
+      }
+
+      diffIdOnly.toSet
+    }.toMap
+  }
+
+  def compareAndMapDifferentTagIds(oldToNewTagIdMap:Map[Long, Long], name:String): ComparatorResult = {
+    val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
+      "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
+
+    val r2Tags: Set[Tag] = R2.cache.tagIdToTag.values.toSet
+    val flexiTags: Set[Tag] = Set.empty
+
+    val lines = oldToNewTagIdMap flatMap { case(oldId, newId) =>
+      val r2t = r2Tags.find(_.tagId == newId).get
+      val ftOpt = flexiTags.find { tag =>
+        (tag.tagId == oldId) && (tag.section.id != r2t.section.id)
+      }.orElse {
+        flexiTags.find(_.tagId == oldId)
+      }
+
+      ftOpt.map{ ft =>
+        s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
+          s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
+      }
+    }
+
+    CSVFileResult(s"$name.csv", header, lines)
+  }
+
+  val setOfDeltasWithoutRemappedTags = new ContentComparator {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
+      Some(compareAndMapDifferentTagIds(oldToNewTagIdMap, s"updated-tags-map"))
     }
   }
   // The list of comparators to apply to data
@@ -254,6 +257,7 @@ object TagDiffer extends DatabaseComponent {
 
   implicit val SectionFormats = Json.format[Section]
   implicit val TagFormats = Json.format[Tag]
+  implicit val TaggingFormats = Json.format[Tagging]
   implicit val R2TagsFormats = Json.format[R2Tags]
   implicit val FlexiTagsFormats = Json.format[FlexiTags]
   implicit val ContentFormats = Json.format[Content]
@@ -304,11 +308,14 @@ object TagDiffer extends DatabaseComponent {
         content
     }
 
-    // apply comparators to data a produce a result
+    // apply comparators to data to produce a result
     val result = dataFuture.map { data =>
+      // compute known map of old to new tags
+      val oldToNewTagIdMap: Map[Long, Long] = computeOldToNewTagIdMap(data)
+
       comparators.foreach{ comparator =>
         try {
-          comparator.compare(data).foreach {
+          comparator.compare(data, oldToNewTagIdMap).foreach {
             case CSVFileResult(fileName, header, lines) =>
               val writer = new PrintWriter(s"$PREFIX/$fileName")
               writer.println(header)
@@ -321,7 +328,7 @@ object TagDiffer extends DatabaseComponent {
             case ScreenResult(lines) => lines.foreach(System.err.println)
           }
         } catch {
-          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator}")
+          case NonFatal(e) => System.err.println(s"Error thrown whilst running comparator ${e.printStackTrace()}}")
         }
       }
     }

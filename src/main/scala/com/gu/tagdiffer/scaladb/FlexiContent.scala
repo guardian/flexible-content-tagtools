@@ -2,30 +2,31 @@ package com.gu.tagdiffer.scaladb
 
 import java.util.NoSuchElementException
 
-import com.gu.tagdiffer.index.model.{Section, TagType, Tag}
+import com.gu.tagdiffer.index.model.`package`.ContentId
+import com.gu.tagdiffer.index.model.{Tagging, Section, TagType, Tag}
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONArray, BSONDateTime, BSONDocument, BSONDocumentReader}
 
 import scala.util.control.NonFatal
 
 case class FlexiContent(
-  contentId: String,
+  contentId: ContentId,
   pageId: Option[String],
   contentType: String,
   created: DateTime,
   lastModified: DateTime,
-  mainTags: Option[List[Tag]],
-  contributorTags: Option[List[Tag]],
-  publicationTags: Option[List[Tag]],
-  bookTags: Option[List[Tag]],
-  sectionTags: Option[List[Tag]]
+  mainTags: Option[List[Tagging]],
+  contributorTags: Option[List[Tagging]],
+  publicationTags: Option[List[Tagging]],
+  bookTags: Option[List[Tagging]],
+  sectionTags: Option[List[Tagging]]
 )
 
 object FlexiContent {
   implicit object ComposerContentBSONRreader extends BSONDocumentReader[FlexiContent] {
     def read(doc: BSONDocument): FlexiContent = {
 
-      val contentId = doc.getAs[String]("_id").get
+      val contentId = doc.getAs[ContentId]("_id").get
       try {
         val taxonomy = doc.getAs[BSONDocument]("taxonomy")
         val newspaper = taxonomy.flatMap(_.getAs[BSONDocument]("newspaper"))
@@ -81,7 +82,7 @@ object FlexiContent {
       }
     }
 
-    private def extractTagInformation(tag: BSONDocument, section: BSONDocument, isLead: Boolean = false): Option[Tag] = {
+    private def extractTagInformation(tag: BSONDocument, section: BSONDocument, isLead: Boolean = false): Option[Tagging] = {
       val tagId = tag.getAs[Long]("id").get
       val tagType = tag.getAs[String]("type").get
       val tt = try {
@@ -99,7 +100,7 @@ object FlexiContent {
       val sectionSlug= section.getAs[String]("slug").get
       val sec = Section(sectionId, sectionName, sectionPathPrefix, sectionSlug)
 
-      Some(Tag.createFromFlex(tagId, tt, internalName, externalName, slug, sec, isLead))
+      Some(Tagging(Tag.createFromFlex(tagId, tt, internalName, externalName, slug, sec), isLead))
     }
   }
 }
