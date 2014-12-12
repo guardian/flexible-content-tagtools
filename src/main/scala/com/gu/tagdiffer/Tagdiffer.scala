@@ -225,8 +225,35 @@ object TagDiffer extends DatabaseComponent {
       Some(compareAndMapDifferentTagIds(deltas.map(item => (item._1, item._2)).toList, oldToNewTagIdMap, s"updated-tags-map"))
     }
   }
+
+  val setOfDeltasWithoutSectionMigrationTags = new ContentComparator {
+    def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
+       contentMap map { case(category, contentList) =>
+        val updatedContentList = contentList map { content =>
+          val flexiOtherTagging = content.flexiTags.other
+          val r2OtherTagging = content.r2Tags.other
+
+          val newListOfOtherTagging = flexiOtherTagging.foldLeft(List.empty[Tagging]){ (acc, tagging) =>
+           val t = if (oldToNewTagIdMap.contains(tagging.tagId)) {
+             val newId = oldToNewTagIdMap.get(tagging.tagId).get
+             r2OtherTagging.find(_.tagId == newId).getOrElse(tagging)
+           } else {
+             tagging
+           }
+            t :: acc
+        }
+
+          val updatedFlexiTags = content.flexiTags.copy(other = newListOfOtherTagging)
+          content.copy(flexiTags = updatedFlexiTags)
+      }
+        val deltas = r2FlexDiffTuples(updatedContentList)
+        compareDeltas(deltas, s"updated-tags-${category.toString}")
+      }
+    }
+  }
+
   // The list of comparators to apply to data
-  val comparators:List[ContentComparator] = List(summaryDiff, flexiNewspaperDuplication, publicationTagDiffs, bookTagDiffs, sectionTagDiffs, setOfDeltas, setOfDeltasWithoutRemappedTags)
+  val comparators:List[ContentComparator] = List(summaryDiff, flexiNewspaperDuplication, publicationTagDiffs, bookTagDiffs, sectionTagDiffs, setOfDeltas, setOfDeltasWithoutRemappedTags, setOfDeltasWithoutSectionMigrationTags)
 
   implicit val ContentCategoryFormats = new Format[Category] {
     def reads(json: JsValue): JsResult[Category] = json match {
