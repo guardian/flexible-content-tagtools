@@ -16,7 +16,7 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
 
   lazy val tagIdToTag = tagMapper.map { case (id, r2Tag) =>
     id -> Tag(id, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName,
-      Some(r2Tag.slug), r2Tag.section, existInR2 = true)
+      /*Some(r2Tag.slug),*/ r2Tag.section, existInR2 = true)
   }
 
   private def lookupR2Tags(pageId: Long, cache: R2Cache): Option[List[Tagging]] = {
