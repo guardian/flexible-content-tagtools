@@ -26,12 +26,12 @@ case class Tagging(tag: Tag, isLead: Boolean) {
   def tagId = tag.tagId
   def internalName = tag.internalName
   def externalName = tag.externalName
-  //def slug = tag.slug
   def section = tag.section
 
   override def toString: String =
     s"${tag.tagId} [${tag.internalName}] [${tag.externalName}] "+
-      s"${if (isLead) " LEAD" else ""} ${tag.tagType}${if (!tag.existInR2) " NOR2" else ""}"
+      s"${if (isLead) " LEAD" else ""} ${tag.tagType}${if (!tag.existInR2) " NOR2" else ""}"+
+      s" ${tag.section.toString}"
 
   def setIdToZero = Tagging(tag.copy(tagId=0), isLead)
 }
@@ -40,7 +40,6 @@ case class Tag(tagId: Long,
                tagType: TagType,
                internalName: String,
                externalName: String,
-               //slug: Option[String],
                section: Section,
                existInR2: Boolean)
 
@@ -49,10 +48,9 @@ object Tag {
                      tagType: TagType,
                      internalName: String,
                      externalName: String,
-                     //slug: Option[String],
                      section: Section ) = {
     val exist = R2.cache.isR2Tag(tagId)
 
-    Tag(tagId, tagType, internalName, externalName, /*slug,*/ section, exist)
+    Tag(tagId, tagType, internalName, externalName, section, exist)
   }
 }

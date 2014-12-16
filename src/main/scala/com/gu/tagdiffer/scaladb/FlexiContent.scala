@@ -92,15 +92,19 @@ object FlexiContent {
       }
       val internalName = tag.getAs[String]("internalName").get
       val externalName = tag.getAs[String]("externalName").get
-      //val slug = tag.getAs[String]("slug")
       // Section
       val sectionId = section.getAs[Long]("id").get
-      val sectionName = section.getAs[String]("name").get
+      val mongoSectionName = section.getAs[String]("name").get
+      val sectionName = if (mongoSectionName.contains("&amp;")) {
+        mongoSectionName.replace("&amp;", "&")
+      } else {
+        mongoSectionName
+      }
       val sectionPathPrefix = section.getAs[String]("pathPrefix")
       val sectionSlug= section.getAs[String]("slug").get
       val sec = Section(sectionId, sectionName, sectionPathPrefix, sectionSlug)
 
-      Some(Tagging(Tag.createFromFlex(tagId, tt, internalName, externalName, /*slug,*/ sec), isLead))
+      Some(Tagging(Tag.createFromFlex(tagId, tt, internalName, externalName, sec), isLead))
     }
   }
 }
