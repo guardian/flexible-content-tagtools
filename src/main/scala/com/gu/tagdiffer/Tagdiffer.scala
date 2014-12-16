@@ -253,7 +253,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   // The list of comparators to apply to data
-  val comparators:List[ContentComparator] = List(summaryDiff, flexiNewspaperDuplication, publicationTagDiffs, bookTagDiffs, sectionTagDiffs, setOfDeltas, setOfDeltasWithoutRemappedTags, setOfDeltasWithoutSectionMigrationTags)
+  val comparators:List[ContentComparator] = List(setOfDeltasWithoutSectionMigrationTags)
 
   implicit val ContentCategoryFormats = new Format[Category] {
     def reads(json: JsValue): JsResult[Category] = json match {

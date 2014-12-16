@@ -15,8 +15,7 @@ case class R2Cache(contentPageId: Map[Long, Long],
 case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache) {
 
   lazy val tagIdToTag = tagMapper.map { case (id, r2Tag) =>
-    id -> Tag(id, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName,
-      /*Some(r2Tag.slug),*/ r2Tag.section, existInR2 = true)
+    id -> Tag(id, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName, r2Tag.section, existInR2 = true)
   }
 
   private def lookupR2Tags(pageId: Long, cache: R2Cache): Option[List[Tagging]] = {
@@ -44,8 +43,6 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
 
   private def lookupR2LastModified(pageId: Long, cache: R2Cache): DateTime = {
     val contentId = cache.contentPageId.get(pageId)
-
-    //val t = contentId.map(key => cache.lastModified.get(key).orElse(None)).getOrElse(None)
 
     val timestamp = contentId.map(c => cache.lastModified.get(c).get).get
 
