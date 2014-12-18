@@ -154,8 +154,10 @@ object TagDiffer extends DatabaseComponent {
   def r2FlexDiffTuples(contentList: List[Content]): List[(Set[Tagging], Set[Tagging], ContentId)] = contentList.map { content =>
     val r2TagSet = content.r2Tags.allTags.toSet
     val flexTagSet = content.flexiTags.allTags.toSet
+
     val onlyR2 = r2TagSet diff flexTagSet
     val onlyFlex = flexTagSet diff r2TagSet
+
     (onlyR2, onlyFlex, content.contentId)
   }
 
@@ -175,9 +177,15 @@ object TagDiffer extends DatabaseComponent {
       }
     }
 
-    deltas.flatMap { e =>
-      val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
-      val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
+    // Some mapping has to be added manually as it can't be extracted from the contentMap
+    val manualMap = Map[Long, Long](65458L -> 66500L, 40143L -> 60080L, 39334L -> 66720L, 59342L -> 8802L,
+      58601L -> 66713L, 65555L -> 66700L, 42794L -> 66714L, 53867L -> 60462L, 45843L -> 66719L, 49675L -> 59143L,
+      49061L -> 66684L, 64943L -> 65754L, 61010L -> 67072L, 31843L -> 65079L, 59354L -> 66345L, 40972L -> 64486L,
+      60661L -> 61660L, 63739L -> 66038L, 63175L -> 63196L)
+
+    val autoMap = deltas.flatMap { e =>
+      val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication)
+      val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication)
 
       val diffIdOnly = for {
         r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
@@ -190,6 +198,8 @@ object TagDiffer extends DatabaseComponent {
 
       diffIdOnly.toSet
     }.toMap
+
+    autoMap ++ manualMap
   }
 
   def compareAndMapDifferentTagIds(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap:Map[Long, Long], name:String): ComparatorResult = {
@@ -226,7 +236,7 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  val setOfDeltasWithoutSectionMigrationTags = new ContentComparator {
+  val setOfDeltasWithoutSectionMigrationAndNameChangeTags = new ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
        contentMap map { case(category, contentList) =>
         val updatedContentList = contentList map { content =>
@@ -247,13 +257,24 @@ object TagDiffer extends DatabaseComponent {
           content.copy(flexiTags = updatedFlexiTags)
       }
         val deltas = r2FlexDiffTuples(updatedContentList)
-        compareDeltas(deltas, s"updated-tags-${category.toString}")
+        // Internal name changed but same ID
+        val newDeltas = deltas.map { content =>
+          val onlyR2 = content._1.map(_.tagId)
+          val onlyFlex = content._2.map(_.tagId)
+
+          val filteredR2 = onlyR2 diff onlyFlex
+          val filteredFlex = onlyFlex diff onlyR2
+
+          (content._1.filter( t => filteredR2.contains(t.tagId)), content._2.filter( t => filteredFlex.contains(t.tagId)), content._3)
+        }
+
+        compareDeltas(newDeltas, s"updated-tags-${category.toString}")
       }
     }
   }
 
   // The list of comparators to apply to data
-  val comparators:List[ContentComparator] = List(setOfDeltasWithoutSectionMigrationTags)
+  val comparators:List[ContentComparator] = List(setOfDeltasWithoutSectionMigrationAndNameChangeTags)
 
   implicit val ContentCategoryFormats = new Format[Category] {
     def reads(json: JsValue): JsResult[Category] = json match {
