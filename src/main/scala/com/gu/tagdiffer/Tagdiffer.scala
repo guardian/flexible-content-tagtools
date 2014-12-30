@@ -252,6 +252,74 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
+  def correctFlexiRepresentation(contentList: List[Content]) = {
+    val discrepancy = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty).groupBy(_._3) // only content with different tags
+
+    val discrepancyFix = discrepancy.mapValues{ c =>
+      val diff = c.head
+      // Contributors
+      val r2Contributors = diff._1.filter(_.tagType == TagType.Contributor)
+      val flexiContributors = diff._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2))
+      val contributors = if (!r2Contributors.isEmpty || !flexiContributors.isEmpty) {
+        r2Contributors ++ flexiContributors
+      } else {
+        Set.empty[Tagging]
+      }
+      // Publication
+      val r2Publication = diff._1.filter(_.tag.tagType == TagType.Publication)
+      val flexiPublication = diff._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2))
+      val publication = (r2Publication, flexiPublication) match {
+        case (r, f) if (r.contains(f.head)) => f.headOption
+        case (r, _) => r.headOption
+        case _ => None
+      }
+      // Newspaper (Book and Book Section)
+      val r2Book = diff._1.filter(_.tagType == TagType.Book)
+      val r2BookSection = diff._1.filter(_.tagType == TagType.BookSection)
+      val flexiBook = diff._1.filter(_.tagType == TagType.Book)
+      val flexiBookSection = diff._1.filter(_.tagType == TagType.BookSection)
+
+      val book = (r2Book, flexiBook) match {
+        case (r, f) => r.headOption
+        case (_, f) => f.headOption
+        case (_, _) => None
+      }
+
+      val bookSection = (r2BookSection, flexiBookSection) match {
+        case (r, f) => r.headOption
+        case (_, f) => f.headOption
+        case (_, _) => None
+      }
+      // Tags
+      val r2Tags = diff._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+        (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
+      val flexiTags = diff._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+        (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
+      
+      (contributors, publication, book, bookSection)
+    }
+
+    contentList.map { content =>
+      Json.obj(
+        "pageId" -> content.pageid,
+        "contentId" -> content.contentId,
+        "lastModifiedFlexi" -> content.lastModifiedFlexi,
+        "lastModifiedR2" -> content.lastModifiedR2,
+        "taxonomy" -> Json.obj(
+          "tags" -> Json.arr(content.flexiTags.other),
+          "contributors" -> content.flexiTags.contributors,
+          "publication" -> content.flexiTags.publications.head,
+          "newspaper" -> Json.obj(
+            "book" -> content.flexiTags.book,
+            "bookSection" -> content.flexiTags.bookSection
+          )
+        )
+      )
+    }
+  }
+
+
+
   // The list of comparators to apply to data
   val comparators:List[ContentComparator] = List(setOfDeltasWithoutSectionMigrationTags)
 
