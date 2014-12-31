@@ -20,8 +20,10 @@ import scala.util.control.NonFatal
 object TagDiffer extends DatabaseComponent {
   // the path where we write result and cache
   val PREFIX = "target/tag-differ"
+  // cache the map of tags that migrated section
+  var tagMigrationCache: Map[Long, Tagging] = _
   /*
-   * (Boolea, Int) :
+   * (Boolean, Int) :
    * - The Boolean value indicates whether tags of the same content are the same but in a different order
    * - The Int value count the number of different tags for the same content
    */
@@ -34,6 +36,9 @@ object TagDiffer extends DatabaseComponent {
   case class CSVFileResult(fileName:String, header:String, lines:Iterable[String]) extends ComparatorResult
   case class JSONFileResult(fileName:String, lines:Iterable[String]) extends ComparatorResult
   case class ScreenResult(lines:Iterable[String]) extends ComparatorResult
+  
+  case class TagCorrected(tags: Set[Tagging], contributors: Set[Tagging],
+                          publication: Option[Tagging], book: Option[Tagging], bookSection: Option[Tagging])
 
   trait ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult]
@@ -192,14 +197,11 @@ object TagDiffer extends DatabaseComponent {
     }.toMap
   }
 
-  def compareAndMapDifferentTagIds(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap:Map[Long, Long], name:String): ComparatorResult = {
-    val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
-      "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
-
+  def mapSectionMigrationTags(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap:Map[Long, Long], name:String): Unit = {
     val r2Tags = deltas.flatMap(_._1).toSet
     val flexiTags = deltas.flatMap(_._2).toSet
 
-    val lines = oldToNewTagIdMap flatMap { case(oldId, newId) =>
+    tagMigrationCache = oldToNewTagIdMap map { case(oldId, newId) =>
       val r2t = r2Tags.find(_.tagId == newId).get
       val ftOpt = flexiTags.find { tag =>
         (tag.tagId == oldId) && (tag.section.id != r2t.section.id)
@@ -207,9 +209,27 @@ object TagDiffer extends DatabaseComponent {
         flexiTags.find(_.tagId == oldId)
       }
 
+      ftOpt.map(_.tagId).get -> r2t //dirty
+    }
+  }
+
+  // refactor to use mapSectionMigrationTags
+  def compareAndMapDifferentTagIds(deltas:List[(Set[Tagging], Set[Tagging])], name:String): ComparatorResult = {
+    val header = "Old Tag Id, Updated Tag Id, Old Internal Name, Updated Internal Name, Old External Name, Updated External Name, " +
+      "Old Type, Updated Type, Old Section Id, Updated Section Id, Old Section Name, Updated Section Name"
+
+    val oldTags = deltas.flatMap(_._2).toSet
+
+    val lines = tagMigrationCache flatMap { case(oldId, newTag) =>
+      val ftOpt = oldTags.find { tag =>
+        (tag.tagId == oldId) && (tag.section.id != newTag.section.id)
+      }.orElse {
+        oldTags.find(_.tagId == oldId)
+      }
+
       ftOpt.map{ ft =>
-        s"${ft.tagId}, ${r2t.tagId}, ${ft.internalName}, ${r2t.internalName}, ${ft.externalName}, ${r2t.externalName}, " +
-          s"${ft.tagType}, ${r2t.tagType}, ${ft.section.id}, ${r2t.section.id}, ${ft.section.name}, ${r2t.section.name}"
+        s"${ft.tagId}, ${newTag.tagId}, ${ft.internalName}, ${newTag.internalName}, ${ft.externalName}, ${newTag.externalName}, " +
+          s"${ft.tagType}, ${newTag.tagType}, ${ft.section.id}, ${newTag.section.id}, ${ft.section.name}, ${newTag.section.name}"
       }
     }
 
@@ -252,66 +272,100 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  def correctFlexiRepresentation(contentList: List[Content]) = {
+  def correctFlexiRepresentation(contentList: List[Content]): List[JsObject] = {
     val discrepancy = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty).groupBy(_._3) // only content with different tags
 
     val discrepancyFix = discrepancy.mapValues{ c =>
-      val diff = c.head
+      val discrepancy = c.head
+      val content = contentList.find(_.contentId == discrepancy._3)
       // Contributors
-      val r2Contributors = diff._1.filter(_.tagType == TagType.Contributor)
-      val flexiContributors = diff._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2))
+      val r2Contributors = discrepancy._1.filter(_.tagType == TagType.Contributor)
+      val flexiContributors = discrepancy._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2))
+      val sharedContributorTags = content.map(c => c.r2Tags.contributors.toSet intersect c.flexiTags.contributors.toSet)
+
       val contributors = if (!r2Contributors.isEmpty || !flexiContributors.isEmpty) {
-        r2Contributors ++ flexiContributors
+        r2Contributors ++ flexiContributors ++ sharedContributorTags.getOrElse(Set.empty[Tagging])
       } else {
-        Set.empty[Tagging]
+        sharedContributorTags.getOrElse(Set.empty[Tagging])
       }
       // Publication
-      val r2Publication = diff._1.filter(_.tag.tagType == TagType.Publication)
-      val flexiPublication = diff._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2))
+      val r2Publication = discrepancy._1.filter(_.tag.tagType == TagType.Publication)
+      val flexiPublication = discrepancy._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2))
+      val sharedPublicationTag = content.map(c => c.r2Tags.publications.toSet intersect c.flexiTags.publications.toSet)
       val publication = (r2Publication, flexiPublication) match {
         case (r, f) if (r.contains(f.head)) => f.headOption
         case (r, _) => r.headOption
-        case _ => None
+        case _ => sharedPublicationTag.map(_.head)
       }
+      val extraPublicationTags = (r2Publication - publication.get) ++
+        (sharedPublicationTag.get - publication.get)// only r2 can have multiple pub tags
       // Newspaper (Book and Book Section)
-      val r2Book = diff._1.filter(_.tagType == TagType.Book)
-      val r2BookSection = diff._1.filter(_.tagType == TagType.BookSection)
-      val flexiBook = diff._1.filter(_.tagType == TagType.Book)
-      val flexiBookSection = diff._1.filter(_.tagType == TagType.BookSection)
-
+      val r2Book = discrepancy._1.filter(_.tagType == TagType.Book)
+      val r2BookSection = discrepancy._1.filter(_.tagType == TagType.BookSection)
+      val flexiBook = discrepancy._1.filter(_.tagType == TagType.Book)
+      val flexiBookSection = discrepancy._1.filter(_.tagType == TagType.BookSection)
+      val sharedBookTag = content.map(c => c.r2Tags.book.toSet intersect c.flexiTags.book.toSet)
+      val sharedBookSectionTag = content.map(c => c.r2Tags.bookSection.toSet intersect c.flexiTags.bookSection.toSet)
       val book = (r2Book, flexiBook) match {
         case (r, f) => r.headOption
         case (_, f) => f.headOption
-        case (_, _) => None
+        case _ => sharedBookTag.map(_.head)
       }
 
       val bookSection = (r2BookSection, flexiBookSection) match {
         case (r, f) => r.headOption
         case (_, f) => f.headOption
-        case (_, _) => None
+        case _ => sharedBookSectionTag.map(_.head)
       }
       // Tags
-      val r2Tags = diff._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+      val r2Tags = discrepancy._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
         (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
-      val flexiTags = diff._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+      val flexiTags = discrepancy._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
         (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
-      
-      (contributors, publication, book, bookSection)
+      val sharedTags = content.map(c => c.r2Tags.other.toSet intersect c.flexiTags.other.toSet)
+
+      val updatedFlexiTags = flexiTags.map ( t => t.tagId match {
+        case id if (tagMigrationCache.contains(id)) => {
+          val newTag = tagMigrationCache.get(id)
+          Tagging(newTag.get.tag, t.isLead)
+        }
+        case _ => t
+      }
+      ).filter(_.tag.existInR2)
+
+      val updatedR2Tags = r2Tags.map { r2 => // fix lead tag discrepancy among tags with migrated section
+        val flexiOnlyTags = updatedFlexiTags.groupBy(_.tagId)
+
+        r2.tagId match {
+          case id if (flexiOnlyTags.contains(id)) => {
+            val flexi = flexiOnlyTags.get(id).get.head // dirty
+            Tagging(r2.tag, r2.isLead || flexi.isLead)
+          }
+          case _ => r2
+        }
+      }
+
+      updatedFlexiTags.filterNot(t => updatedR2Tags.exists(_.tagId == t.tagId)) // R2 has now the correct representation of migrated tags
+
+      val tags = sharedTags.getOrElse(Set.empty[Tagging]) ++ updatedFlexiTags ++ updatedR2Tags ++ extraPublicationTags // Order??
+
+      TagCorrected(tags, contributors, publication, book, bookSection)
     }
 
-    contentList.map { content =>
+    contentList.filter(c => discrepancyFix.contains(c.contentId)).map { content =>
+      val alltags = discrepancyFix.get(content.contentId).get
       Json.obj(
         "pageId" -> content.pageid,
         "contentId" -> content.contentId,
         "lastModifiedFlexi" -> content.lastModifiedFlexi,
         "lastModifiedR2" -> content.lastModifiedR2,
         "taxonomy" -> Json.obj(
-          "tags" -> Json.arr(content.flexiTags.other),
-          "contributors" -> content.flexiTags.contributors,
-          "publication" -> content.flexiTags.publications.head,
+          "tags" -> Json.arr(alltags.tags),
+          "contributors" -> alltags.contributors,
+          "publication" -> alltags.publication.get,
           "newspaper" -> Json.obj(
-            "book" -> content.flexiTags.book,
-            "bookSection" -> content.flexiTags.bookSection
+            "book" -> alltags.book.get,
+            "bookSection" -> alltags.bookSection.get
           )
         )
       )
@@ -357,7 +411,7 @@ object TagDiffer extends DatabaseComponent {
 
   implicit val SectionFormats = Json.format[Section]
   implicit val TagFormats = Json.format[Tag]
-  implicit val TaggingFormats = Json.format[Tagging]
+    implicit val TaggingFormats = Json.format[Tagging]
   implicit val R2TagsFormats = Json.format[R2Tags]
   implicit val FlexiTagsFormats = Json.format[FlexiTags]
   implicit val ContentFormats = Json.format[Content]
