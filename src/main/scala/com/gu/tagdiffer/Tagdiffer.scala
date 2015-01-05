@@ -2,6 +2,7 @@ package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
 import java.util.NoSuchElementException
+import akka.util.Helpers.Requiring
 import com.fasterxml.jackson.core.JsonParseException
 import com.gu.tagdiffer.component.DatabaseComponent
 import com.gu.tagdiffer.index.model.ContentCategory._
@@ -367,26 +368,46 @@ object TagDiffer extends DatabaseComponent {
       TagCorrected(tags, contributors, publication, book, bookSection)
     }
 
-    contentList.filter(c => discrepancyFix.contains(c.contentId)).map { content =>
-      val alltags = discrepancyFix.get(content.contentId).get
-      Json.obj(
-        "pageId" -> content.pageid,
-        "contentId" -> content.contentId,
-        "lastModifiedFlexi" -> content.lastModifiedFlexi,
-        "lastModifiedR2" -> content.lastModifiedR2,
-        "taxonomy" -> Json.obj(
-          "tags" -> alltags.tags,
-          "contributors" -> alltags.contributors,
-          "publication" -> alltags.publication,
-          "newspaper" -> Json.obj(
-            "book" -> alltags.book,
-            "bookSection" -> alltags.bookSection
-          )
-        )
-      )
-    }
+    jsonTagMapper(contentList, discrepancyFix)
   }
 
+  private def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, TagCorrected]): List[JsObject] = contentList.filter(c =>
+    discrepancyFix.contains(c.contentId)).map { content =>
+    val alltags = discrepancyFix.get(content.contentId).get
+    val transformer =  (__ \ 'tag \ 'existInR2).json.prune
+
+    val taxonomy = Json.obj(
+      "tags" -> alltags.tags,
+      "contributors" -> alltags.contributors,
+      "publication" -> alltags.publication,
+      "newspaper" -> Json.obj(
+        "book" -> alltags.book,
+        "bookSection" -> alltags.bookSection
+      )
+    )
+
+    // JsArrays (validate and transform)
+    val tags = (taxonomy \\ "tags").map(jv => jv.validate[Seq[JsObject]].get).head
+    val updatedTags = tags.map{_.transform(transformer).get}
+    val contributors = (taxonomy \\ "contributors").map(jv => jv.validate[Seq[JsObject]].get).head
+    val updatedContributors = contributors.map(_.transform(transformer).get)
+    // JsObject (validate and transform)
+    val publication = (taxonomy \ "publication").transform(transformer).get
+    val book = (taxonomy \ "newspaper" \ "book").transform(transformer).asOpt
+    val bookSection = (taxonomy \ "newspaper" \ "bookSection").transform(transformer).asOpt
+
+    val tranformedTaxonomy = taxonomy ++ Json.obj("tags" -> updatedTags) ++ Json.obj("contributors" -> updatedContributors) ++
+      Json.obj("publication" -> publication) ++ Json.obj("newspaper" -> Json.obj("book" -> book, "bookSection" -> bookSection))
+
+    val jsonMapping = Json.obj(
+      "pageId" -> content.pageid,
+      "contentId" -> content.contentId,
+      "lastModifiedFlexi" -> content.lastModifiedFlexi,
+      "lastModifiedR2" -> content.lastModifiedR2
+    ) ++ Json.obj("taxonomy" -> tranformedTaxonomy)
+
+    jsonMapping
+  }
 
 
   // The list of comparators to apply to data
