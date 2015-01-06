@@ -30,7 +30,7 @@ case class Tagging(tag: Tag, isLead: Boolean) {
 
   override def toString: String =
     s"${tag.tagId} [${tag.internalName}] [${tag.externalName}] "+
-      s"${if (isLead) " LEAD" else ""} ${tag.tagType}${if (!tag.existInR2) " NOR2" else ""}"+
+      s"${if (isLead) " LEAD" else ""} ${tag.tagType}${if (!tag.existInR2.getOrElse(false)) " NOR2" else ""}"+
       s" ${tag.section.toString}"
 
   def setIdToZero = Tagging(tag.copy(tagId=0), isLead)
@@ -41,7 +41,7 @@ case class Tag(tagId: Long,
                internalName: String,
                externalName: String,
                section: Section,
-               existInR2: Boolean)
+               existInR2: Option[Boolean])
 
 object Tag {
   def createFromFlex(tagId: Long,
@@ -51,6 +51,6 @@ object Tag {
                      section: Section ) = {
     val exist = R2.cache.isR2Tag(tagId)
 
-    Tag(tagId, tagType, internalName, externalName, section, exist)
+    Tag(tagId, tagType, internalName, externalName, section, Some(exist))
   }
 }

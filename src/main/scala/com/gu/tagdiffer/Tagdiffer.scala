@@ -2,15 +2,12 @@ package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
 import java.util.NoSuchElementException
-import akka.util.Helpers.Requiring
-import com.fasterxml.jackson.core.JsonParseException
 import com.gu.tagdiffer.component.DatabaseComponent
 import com.gu.tagdiffer.index.model.ContentCategory._
 import com.gu.tagdiffer.index.model.TagType
 import com.gu.tagdiffer.index.model.TagType._
 import com.gu.tagdiffer.index.model._
 import com.gu.tagdiffer.scaladb.mongoConnect
-import play.api.libs.json
 import play.api.libs.json._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -282,9 +279,10 @@ object TagDiffer extends DatabaseComponent {
     val discrepancyFix = discrepancy.mapValues{ c =>
       val discrepancy = c.head
       val content = contentList.find(_.contentId == discrepancy._3)
+
       // Contributors
       val r2Contributors = discrepancy._1.filter(_.tagType == TagType.Contributor)
-      val flexiContributors = discrepancy._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2))
+      val flexiContributors = discrepancy._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2.getOrElse(false)))
       val sharedContributorTags = content.map(c => c.r2Tags.contributors intersect c.flexiTags.contributors)
 
       val contributors = if (!r2Contributors.isEmpty || !flexiContributors.isEmpty) {
@@ -294,7 +292,7 @@ object TagDiffer extends DatabaseComponent {
       }
       // Publication
       val r2Publication = discrepancy._1.filter(_.tag.tagType == TagType.Publication)
-      val flexiPublication = discrepancy._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2))
+      val flexiPublication = discrepancy._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2.getOrElse(false)))
       val sharedPublicationTag = content.map(c => c.r2Tags.publications.toSet intersect c.flexiTags.publications.toSet).getOrElse(Set.empty[Tagging])
       val publication = if (r2Publication.nonEmpty && flexiPublication.nonEmpty && r2Publication.contains(flexiPublication.head)) {
         flexiPublication.headOption
@@ -348,7 +346,7 @@ object TagDiffer extends DatabaseComponent {
         }
         case _ => t
       }
-      ).filter(_.tag.existInR2)
+      ).filter(_.tag.existInR2.getOrElse(false))
 
       val updatedR2Tags = r2Tags.map { r2 => // fix lead tag discrepancy among tags with migrated section
         val flexiOnlyTags = updatedFlexiTags.groupBy(_.tagId)
@@ -363,7 +361,7 @@ object TagDiffer extends DatabaseComponent {
 
       updatedFlexiTags.filterNot(t => updatedR2Tags.exists(_.tagId == t.tagId)) // R2 has now the correct representation of migrated tags
 
-      val tags = sharedTags.getOrElse(List.empty[Tagging]) ++ updatedFlexiTags ++ updatedR2Tags ++ extraPublicationTags // Order??
+      val tags = sharedTags.getOrElse(List.empty[Tagging]) ++ updatedFlexiTags ++ updatedR2Tags ++ extraPublicationTags
 
       TagCorrected(tags, contributors, publication, book, bookSection)
     }
