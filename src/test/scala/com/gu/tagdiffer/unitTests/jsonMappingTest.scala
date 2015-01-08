@@ -8,6 +8,7 @@ import org.scalatest.{FeatureSpec, GivenWhenThen}
 import org.scalatest.matchers.ShouldMatchers
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
+import com.gu.tagdiffer.unitTests.TestTags._
 
 case class TagMapping (pageId: String,
                        contentId: ContentId,
@@ -19,6 +20,7 @@ case class TagMapping (pageId: String,
                        book: Tagging,
                        bookSection: Tagging)
 
+// Utiliry object to read JSON values as Enum values
 object EnumUtils {
   def enumReads[E <: Enumeration](enum: E): Reads[E#Value] = new Reads[E#Value] {
     def reads(json: JsValue): JsResult[E#Value] = json match {
@@ -34,25 +36,8 @@ object EnumUtils {
   }
 }
 
-class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers {
-  // Create Tags
-  val section = Section(8, "test section", Some("testSectionPath"), "section")
-  val mainTag = Tagging(Tag(1, Other, "tag 1", "tag", section, Some(true)), false)
-  val mainTagRenamed = Tagging(mainTag.tag.copy(internalName = "tag renamed"), false)
-  val oldTag = Tagging(mainTag.tag.copy(existInR2 = Some(false)), false)
-  val newTag = Tagging(oldTag.tag.copy(tagId = 9L, section = section.copy(id = 9L)), false)
-  val leadTag = Tagging(Tag(2, Other, "tag 2", "tag", section, Some(true)), true)
-  val noLeadTag = leadTag.copy(isLead = false)
-  val contributorTag = Tagging(Tag(3, Contributor, "tag 3", "tag", section, Some(true)), false)
-  val contributorTag2 = Tagging(Tag(4, Contributor, "tag 4", "tag", section, Some(true)), false)
-  val publicationTag = Tagging(Tag(5, Publication, "tag 5", "tag", section, Some(true)), false)
-  val publicationTag2 = Tagging(Tag(6, Publication, "tag 6", "tag", section, Some(true)), false)
-  val bookTag = Tagging(Tag(7, Book, "tag 7", "tag", section, Some(true)), false)
-  val bookSectionTag = Tagging(Tag(8, BookSection, "tag 8", "tag", section, Some(true)), false)
-  val createTimestamp = new DateTime()
-  val lastModified = new DateTime()
-
-  // init tag migration tag
+class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers {
+  // init tag migration mapping
   TagDiffer.tagMigrationCache = Map(oldTag.tagId -> newTag)
 
   // JSON Reads and Format
@@ -86,16 +71,16 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
 
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
-      then("the json should be the one expected")
+      then("the json has the expected format")
       val res = jsonMapping.validate[TagMapping]
       res.isSuccess should be(true)
-      and("each json path contains the expected tagType")
+      and("and tags are placed in the right section according to their type")
       val mapping = res.get
       val isTagTypeCorrect = (mapping.book.tagType == Book) && (mapping.bookSection.tagType == BookSection) &&
         (mapping.contributors.forall(_.tagType == Contributor)) && (mapping.publication.tagType == Publication) &&
         (mapping.tags.forall(_.tagType == Other))
       isTagTypeCorrect should be(true)
-      and ("the original order of main tags is preserved with diff tags added at the bottom")
+      and ("the order of shared main tags is preserved and different tags are added at the bottom")
       val mainTags = (mapping.tags.head.tagId == leadTag.tagId) && (mapping.tags.last.tagId == mainTag.tagId)
     }
 
@@ -105,13 +90,13 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
 
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content))
-      then("the list of json should be empty")
+      then("the list of json mappings should be empty")
       jsonMapping.isEmpty should be(true)
     }
   }
 
   feature("Newspaper tag duplication") {
-    scenario("Flexible-content has differences and duplicated newspaper tags ") {
+    scenario("flexible-content has different main tags and duplicated newspaper tags") {
       val flexiTags = FlexiTags(List(leadTag, bookTag, bookSectionTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(mainTag, leadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -121,13 +106,13 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val mainTags = res.tags.forall(t => (t.tagType != Book) && (t.tagType != BookSection)) &&
         res.tags.filter(_.tagId == mainTag.tagId).nonEmpty
       val newspaperTags = (res.book.tagId == bookTag.tagId) && (res.bookSection.tagId == bookSectionTag.tagId)
-      then("newspaper tag should not appear in main tag list")
+      then("the newspaper tag should not appear in mapping main tag list")
       mainTags should be(true)
-      and("should only be in the newspaper section")
+      and("should only appear in the mapping newspaper section")
       newspaperTags should be(true)
     }
 
-    scenario("Flexible-content has only duplicated newspaper tags ") {
+    scenario("flexible-content has only duplicated newspaper tags ") {
       val flexiTags = FlexiTags(List(leadTag, bookTag, bookSectionTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(leadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -136,15 +121,15 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val res = jsonMapping.validate[TagMapping].get
       val mainTags = res.tags.forall(t => (t.tagType != Book) && (t.tagType != BookSection))
       val newspaperTags = (res.book.tagId == bookTag.tagId) && (res.bookSection.tagId == bookSectionTag.tagId)
-      then("newspaper tag should not appear in main tag list")
+      then("newspaper tag should not appear between mapping main tag")
       mainTags should be(true)
-      and("should only be in the newspaper section")
+      and("should only appear in the mapping newspaper section")
       newspaperTags should be(true)
     }
   }
 
   feature("Contributor tag discrepancy") {
-    scenario("Flexible-content has no contributor tag") {
+    scenario("flexible-content has no contributor tag") {
       val flexiTags = FlexiTags(List(leadTag), List(), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(leadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -152,21 +137,23 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
       val contributor = (res.contributors.length == 1) && (res.contributors.head.tagId == contributorTag.tagId)
-      then("the R2 contributor tag is the new contributor tag")
+      then("the R2 contributor tag is the mapping contributor tag")
       contributor should be(true)
     }
 
-    scenario("Flexible-content have different contributor tags") {
+    scenario("flexible-content and R2 have different contributor tags") {
       val flexiTags = FlexiTags(List(leadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(leadTag, contributorTag2, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
 
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
-      val contributor = (res.contributors.length == 2) && (res.contributors.head.tagId == contributorTag.tagId) &&
-        (res.contributors.last.tagId == contributorTag2.tagId)
-      then("the R2 contributor tag is added at the bottom of the contributor tag list")
+      val contributor = (res.contributors.length == 2)
+      then("both tags are present in the mapping")
       contributor should be(true)
+      and("the flexible content contributor tag is the first one")
+      (res.contributors.head.tagId == contributorTag.tagId) &&
+        (res.contributors.last.tagId == contributorTag2.tagId) should be(true)
     }
   }
 
@@ -180,13 +167,14 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val res = jsonMapping.validate[TagMapping].get
       val mainTags = res.tags.filter(_.tagId == publicationTag2.tagId).nonEmpty
       val publication = (res.publication.tagId == publicationTag.tagId)
-      then("the extra publication tag is included in the main tags")
-      mainTags should be(true)
-      and("the first R2 publication shared tag is the publication tag")
+      then("the first R2 publication tag is the mapping publication tag")
       publication should be(true)
+      and("the extra publication tag is included in the mapping main tags")
+      mainTags should be(true)
+
     }
 
-    scenario("One is shared with flexible content") {
+    scenario("R2 and flexible-content share one publication tag") {
       val flexiTags = FlexiTags(List(leadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(leadTag, contributorTag, publicationTag, publicationTag2, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -195,15 +183,16 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val res = jsonMapping.validate[TagMapping].get
       val mainTags = res.tags.filter(_.tagId == publicationTag2.tagId).nonEmpty
       val publication = (res.publication.tagId == publicationTag.tagId)
-      then("the extras publication tags are included in the main tags")
-      mainTags should be(true)
-      and("the shared tag is the publicatio tag")
+      then("the shared publication tag is the mapping's publication tag")
       publication should be(true)
+      and("the extra publication tag is included between the mapping main tags")
+      mainTags should be(true)
+
     }
   }
 
   feature("Lead tag discrepancy") {
-    scenario("Missing Lead tag in R2") {
+    scenario("the same tag is lead tag in flexible-content but not in R2") {
       val flexiTags = FlexiTags(List(leadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(noLeadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -211,11 +200,11 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
       val leadtag = (res.tags.length == 1) && res.tags.head.isLead
-      then("the main tags contains the lead tag")
+      then("the mapping has only the lead tag")
       leadtag should be(true)
     }
 
-    scenario("Missing Lead tag in flexible-content") {
+    scenario("the same tag is lead tag in R2 but not in flexible-content") {
       val flexiTags = FlexiTags(List(noLeadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(leadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -223,13 +212,13 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
       val leadtag = (res.tags.length == 1) && res.tags.head.isLead
-      then("the main tags contains the lead tag")
+      then("the mapping has only the lead tag")
       leadtag should be(true)
     }
   }
 
   feature("Tag renaming/migration") {
-    scenario("The tag has been renamed but keeps the same ID") {
+    scenario("the tag has been renamed in R2 but keeps the same ID") {
       val flexiTags = FlexiTags(List(mainTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(mainTagRenamed, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -237,11 +226,11 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
       val renamed = (res.tags.length == 1) && (res.tags.head.internalName == mainTagRenamed.internalName)
-      then("the tag has the correct name")
+      then("only the renamed tag is in the mapping")
       renamed should be(true)
     }
 
-    scenario("Only the tag ID has changed after section migration") {
+    scenario("the tag ID has changed after section migration") {
       val flexiTags = FlexiTags(List(oldTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
       val r2Tags = R2Tags(List(newTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
@@ -249,7 +238,7 @@ class jsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       val jsonMapping = TagDiffer.correctFlexiRepresentation(List[Content](content)).head
       val res = jsonMapping.validate[TagMapping].get
       val migrated = (res.tags.length == 1) && (res.tags.head.tagId == newTag.tagId)
-      then("the tag has the correct ID")
+      then("only the new tag is in the mapping")
       migrated should be(true)
     }
   }
