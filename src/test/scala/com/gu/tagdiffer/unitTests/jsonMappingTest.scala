@@ -51,7 +51,10 @@ class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       (__ \ "section").read[Section] and
       (__ \ "existInR2").readNullable[Boolean]
     )(Tag.apply _)
-  implicit val TaggingFormats = TagDiffer.TaggingFormats
+  implicit val TaggingFormats: Reads[Tagging] = (
+    (__ \ "tag").read[Tag] and
+      (__ \ "isLead").readNullable[Boolean].map(_.getOrElse(false))
+    )(Tagging.apply _)
   implicit val TagMappingReader: Reads[TagMapping] = (
     (__ \ "pageId").read[String] and
       (__ \ "contentId").read[ContentId] and

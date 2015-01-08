@@ -275,19 +275,23 @@ object TagDiffer extends DatabaseComponent {
 
 
   def correctFlexiRepresentation(contentList: List[Content]): List[JsObject] = {
-    val diffTags = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty).groupBy(_._3) // only content with different tags
-    // Content that only has duplicated newspaper tags in the main tag list.
-    // This problem only affect flexible-content
+    // Find and filter content with tag discrepancies
+    val diffTags = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty).groupBy(_._3)
+
+    /*
+     * Find content that only has duplicated newspaper tags in the main tag list
+     * This problem comes from inCopy integration and only affect flexible-content
+     * (Fixed in the integration but old content is still affected)
+     */
     val newspaperTagsDuplication = contentList.filterNot(c => diffTags.contains(c.contentId)).map { content =>
-        val othersTag = content.flexiTags.other
-        val isNotDuplicated = othersTag.forall(t=> (t.tagType != TagType.Book) && (t.tagType != TagType.BookSection))
-        val res = if (!isNotDuplicated) {
-          Some((Set.empty[Tagging], Set.empty[Tagging], content.contentId))
-        } else {
-          None
-        }
-        res
-      }.filter(_.isDefined).map(_.get).groupBy(_._3)
+      val duplicatedContent = content.flexiTags.other.filter(t => (t.tagType == TagType.Book) || (t.tagType == BookSection))
+      val res = if (!duplicatedContent.isEmpty) {
+        Some((Set.empty[Tagging], Set.empty[Tagging], content.contentId))
+      } else {
+        None
+      }
+      res
+    }.filter(_.isDefined).map(_.get).groupBy(_._3)
     val discrepancy = diffTags ++ newspaperTagsDuplication
 
     val discrepancyFix = discrepancy.mapValues{ c =>
@@ -308,8 +312,8 @@ object TagDiffer extends DatabaseComponent {
       val r2Publication = discrepancy._1.filter(_.tag.tagType == TagType.Publication)
       val flexiPublication = discrepancy._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2.getOrElse(false)))
       val sharedPublicationTag = content.map(c => c.r2Tags.publications.toSet intersect c.flexiTags.publications.toSet).getOrElse(Set.empty[Tagging])
-
-      val publication = if (sharedPublicationTag.nonEmpty){ // R2 can have multiple publication tags. Choose the one in common if so
+      // R2 can have multiple publication tags. Choose the one in common if so
+      val publication = if (sharedPublicationTag.nonEmpty){
         sharedPublicationTag.headOption
       } else if (r2Publication.nonEmpty) {
         r2Publication.headOption
@@ -328,22 +332,22 @@ object TagDiffer extends DatabaseComponent {
       val flexiBookSection = discrepancy._2.filter(_.tagType == TagType.BookSection)
       val sharedBookTag = content.map(c => c.r2Tags.book intersect c.flexiTags.book).getOrElse(List.empty[Tagging])
       val sharedBookSectionTag = content.map(c => c.r2Tags.bookSection intersect c.flexiTags.bookSection).getOrElse(List.empty[Tagging])
-      val book = if (r2Book.nonEmpty) {
+      val book = if (sharedBookTag.nonEmpty) {
+        sharedBookTag.headOption
+      } else if (r2Book.nonEmpty) {
         r2Book.headOption
       } else if (flexiBook.nonEmpty) {
         flexiBook.headOption
-      } else if (sharedBookTag.nonEmpty){
-        sharedBookTag.headOption
       } else {
         None
       }
 
-      val bookSection = if (r2BookSection.nonEmpty) {
+      val bookSection = if (sharedBookSectionTag.nonEmpty) {
+        sharedBookSectionTag.headOption
+      } else if (r2BookSection.nonEmpty) {
         r2BookSection.headOption
       } else if (flexiBookSection.nonEmpty) {
         flexiBookSection.headOption
-      } else if (sharedBookSectionTag.nonEmpty) {
-        sharedBookSectionTag.headOption
       } else {
         None
       }
@@ -367,14 +371,14 @@ object TagDiffer extends DatabaseComponent {
         val flexiOnlyTags = updatedFlexiTags.groupBy(_.tagId)
         r2.tagId match {
           case id if (flexiOnlyTags.contains(id)) => {
-            val flexi = flexiOnlyTags.get(id).get.head // dirty
-            Tagging(r2.tag, r2.isLead || flexi.isLead)
+            val isFlexiTagLead = flexiOnlyTags.get(id).map(_.head.isLead)
+            Tagging(r2.tag, r2.isLead || isFlexiTagLead.getOrElse(false))
           }
           case _ => r2
         }
       }
 
-      // R2 has now the correct representation of migrated tags and Lead tags discrepancy
+      // R2 has now the correct representation of migrated tags and lead tags discrepancy
       val ft = updatedFlexiTags.filterNot(t => updatedR2Tags.exists(_.tagId == t.tagId))
 
       val tags = sharedTags.getOrElse(List.empty[Tagging]) ++ updatedR2Tags ++ ft  ++ extraPublicationTags
@@ -388,7 +392,8 @@ object TagDiffer extends DatabaseComponent {
   private def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, TagCorrected]): List[JsObject] = contentList.filter(c =>
     discrepancyFix.contains(c.contentId)).map { content =>
     val alltags = discrepancyFix.get(content.contentId).get
-    val transformer =  (__ \ 'tag \ 'existInR2).json.prune
+    val existInR2Transformer =  (__ \ 'tag \ 'existInR2).json.prune
+    val isLeadTransformer =  (__ \ 'isLead).json.prune
 
     val taxonomy = Json.obj(
       "tags" -> alltags.tags,
@@ -402,13 +407,13 @@ object TagDiffer extends DatabaseComponent {
 
     // JsArrays (validate and transform)
     val tags = (taxonomy \\ "tags").map(jv => jv.validate[Seq[JsObject]].get).head
-    val updatedTags = tags.map{_.transform(transformer).get}
+    val updatedTags = tags.map{_.transform(existInR2Transformer).get}
     val contributors = (taxonomy \\ "contributors").map(jv => jv.validate[Seq[JsObject]].get).head
-    val updatedContributors = contributors.map(_.transform(transformer).get)
+    val updatedContributors = contributors.map(_.transform(existInR2Transformer andThen isLeadTransformer).get)
     // JsObject (validate and transform)
-    val publication = (taxonomy \ "publication").transform(transformer).get
-    val book = (taxonomy \ "newspaper" \ "book").transform(transformer).asOpt
-    val bookSection = (taxonomy \ "newspaper" \ "bookSection").transform(transformer).asOpt
+    val publication = (taxonomy \ "publication").transform(existInR2Transformer andThen isLeadTransformer).get
+    val book = (taxonomy \ "newspaper" \ "book").transform(existInR2Transformer andThen isLeadTransformer).asOpt
+    val bookSection = (taxonomy \ "newspaper" \ "bookSection").transform(existInR2Transformer andThen isLeadTransformer).asOpt
 
     val tranformedTaxonomy = taxonomy ++ Json.obj("tags" -> updatedTags) ++ Json.obj("contributors" -> updatedContributors) ++
       Json.obj("publication" -> publication) ++ Json.obj("newspaper" -> Json.obj("book" -> book, "bookSection" -> bookSection))
