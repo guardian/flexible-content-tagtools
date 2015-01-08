@@ -1,6 +1,6 @@
 package com.gu.tagdiffer.index.model
 
-import com.gu.tagdiffer.R2
+import com.gu.tagdiffer.{TagDiffer, R2}
 import com.gu.tagdiffer.TagDiffer.orderAndNumberDiff
 import org.joda.time.DateTime
 

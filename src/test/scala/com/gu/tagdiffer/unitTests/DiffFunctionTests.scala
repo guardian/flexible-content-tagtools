@@ -1,23 +1,12 @@
 package com.gu.tagdiffer.unitTests
 
 import com.gu.tagdiffer.index.model._
-import com.gu.tagdiffer.index.model.TagType._
-import org.joda.time.DateTime
 import org.scalatest.{FeatureSpec, GivenWhenThen}
 import org.scalatest.matchers.ShouldMatchers
+import com.gu.tagdiffer.unitTests.TestTags._
+
 
 class DiffFunctionTests extends FeatureSpec with GivenWhenThen with ShouldMatchers{
-  val section = Section(8, "test section", Some("testSectionPath"), "section")
-  val mainTag = Tagging(Tag(1, Other, "tag 2", "tag", section, true), false)
-  val leadTag = Tagging(Tag(2, Other, "tag 3", "tag", section, true), true)
-  val contributorTag = Tagging(Tag(3, Contributor, "tag 4", "tag", section, true), false)
-  val contributorTag2 =Tagging( Tag(4, Contributor, "tag 5", "tag", section, true), false)
-  val publicationTag = Tagging(Tag(5, Publication, "tag 6", "tag", section, true), false)
-  val bookTag = Tagging(Tag(6, Book, "tag 7", "tag", section, true), false)
-  val bookSectionTag = Tagging(Tag(7, BookSection, "tag 8", "tag", section, true), false)
-  val createTimestamp = new DateTime()
-  val lastModified = new DateTime()
-
   feature("Check tags order") {
     scenario("different order") {
       given("the same tags")
