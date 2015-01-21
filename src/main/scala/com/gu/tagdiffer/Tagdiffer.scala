@@ -561,7 +561,8 @@ object TagDiffer extends DatabaseComponent {
 
       jsonComparators.foreach{ comparator =>
         try{
-          comparator.compare(data, oldToNewTagIdMap).foreach {
+          val ret = comparator.compare(data, oldToNewTagIdMap)
+            ret.foreach {
             case JSONFileResult(fileName, jsons) =>
               val writer = new PrintWriter(s"$PREFIX/$fileName")
               jsons.foreach(json => writer.println(json.toString()))
