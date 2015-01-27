@@ -2,6 +2,7 @@ package com.gu.tagdiffer.unitTests
 
 import com.gu.tagdiffer.TagDiffer
 import com.gu.tagdiffer.TagDiffer.{CSVFileResult, JSONFileResult}
+import com.gu.tagdiffer.cache.FileCache
 import com.gu.tagdiffer.index.model.TagType._
 import com.gu.tagdiffer.index.model._
 import org.joda.time.DateTime
@@ -39,7 +40,7 @@ object EnumUtils {
 
 class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers {
   // JSON Reads and Format
-  implicit val SectionFormats = TagDiffer.SectionFormats
+  implicit val SectionFormats = FileCache.SectionFormats
   implicit val TagTypeFormat: Reads[TagType.Value] = EnumUtils.enumReads(TagType)
   implicit val TagFormats: Reads[Tag] = (
     (__ \ "tagId").read[Long] and

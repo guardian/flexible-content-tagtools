@@ -1,6 +1,6 @@
-package com.gu.tagdiffer.scaladb
+package com.gu.tagdiffer.r2
 
-import java.sql.{PreparedStatement, Connection}
+import java.sql.{Connection, PreparedStatement}
 
 /**
  * Represents a query that can be executed

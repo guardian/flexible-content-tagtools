@@ -1,7 +1,6 @@
 package com.gu.tagdiffer
 
-import com.gu.tagdiffer.component.DatabaseComponent
-import com.gu.tagdiffer.database._
+import com.gu.tagdiffer.r2._
 import com.gu.tagdiffer.index.model.{Tagging, Tag}
 import org.joda.time.DateTime
 

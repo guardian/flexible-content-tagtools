@@ -2,12 +2,13 @@ package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
 import java.util.NoSuchElementException
-import com.gu.tagdiffer.component.DatabaseComponent
+import com.gu.tagdiffer.cache.FileCache
 import com.gu.tagdiffer.index.model.ContentCategory._
 import com.gu.tagdiffer.index.model.TagType
 import com.gu.tagdiffer.index.model.TagType._
 import com.gu.tagdiffer.index.model._
-import com.gu.tagdiffer.scaladb.mongoConnect
+import com.gu.tagdiffer.flexible.mongoConnect
+import com.gu.tagdiffer.r2.DatabaseComponent
 import play.api.libs.json._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -270,45 +271,6 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  implicit val ContentCategoryFormats = new Format[Category] {
-    def reads(json: JsValue): JsResult[Category] = json match {
-      case JsString(value) =>
-        try {
-          val enum = ContentCategory.withName(value)
-          JsSuccess(enum)
-        } catch {
-          case e:NoSuchElementException =>
-            JsError(s"Invalid enum value: $value")
-        }
-      case _ => JsError(s"Invalid type for enum value (expected JsString)")
-    }
-
-    def writes(o: Category): JsValue = JsString(o.toString)
-  }
-
-  implicit val TagTypeFormats = new Format[TagType] {
-    def reads(json: JsValue): JsResult[TagType] = json match {
-      case JsString(value) =>
-        try {
-          val enum = TagType.withName(value)
-          JsSuccess(enum)
-        } catch {
-          case e:NoSuchElementException =>
-            JsError(s"Invalid enum value: $value")
-        }
-      case _ => JsError(s"Invalid type for enum value (expected JsString)")
-    }
-
-    def writes(o: TagType): JsValue = JsString(o.toString)
-  }
-
-  implicit val SectionFormats = Json.format[Section]
-  implicit val TagFormats = Json.format[Tag]
-  implicit val TaggingFormats = Json.format[Tagging]
-  implicit val R2TagsFormats = Json.format[R2Tags]
-  implicit val FlexiTagsFormats = Json.format[FlexiTags]
-  implicit val ContentFormats = Json.format[Content]
-
   val correctTagMapping = new ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
       // Find and filter content with tag discrepancies
@@ -496,47 +458,12 @@ object TagDiffer extends DatabaseComponent {
   // The list of comparators to apply to data
   val comparators: List[ContentComparator] = List(correctTagMapping)
 
-  // Write data to cache file as a Json
-  def writeContentToDisk(content: Map[Category, List[Content]], filePrefix: String): Unit = {
-    content.foreach { case (key, value) => key.toString -> value
-      val file = s"$filePrefix-$key.cache"
-      System.err.println(s"Writing content to $file")
-      val writer = new PrintWriter(file)
-      value.foreach { item =>
-        writer.println(Json.stringify(Json.toJson(item)))
-      }
-      writer.close()
-      System.err.println(s"Finished writing content to $file")
-    }
-  }
-  // Get data from cache file
-  def sourceContentFromDisk(filePrefix: String): Map[Category, List[Content]] = {
-    val categories: Set[Category] = ContentCategory.values.toSet
-    categories.filter(_ == ContentCategory.Live).map { category =>
-      val file = s"$filePrefix-${category.toString}.cache"
-      System.err.println(s"Attempting to read and parse content from $file")
-      val contentLines = Source.fromFile(file).getLines()
-      val content = contentLines.flatMap { line =>
-        try {
-          Json.fromJson[Content](Json.parse(line)).asOpt
-        } catch {
-          case NonFatal(e) => {
-            None
-          }
-        }
-      }
-      val contentList = content.toList
-      System.err.println(s"Successfully read and parsed content from $file")
-      category -> contentList
-    }.toMap
-  }
-
   def main(args: Array[String]): Unit = {
     new File(PREFIX).mkdir()
     val filePrefix = s"$PREFIX/content"
 
     // try to open cache file otherwise get data from the databases and cache them
-    val dataFuture = Future{sourceContentFromDisk(filePrefix)}.recoverWith {
+    val dataFuture = Future{FileCache.sourceContentFromDisk(filePrefix)}.recoverWith {
       case NonFatal(e) =>
         R2.init()
         val content = for {
@@ -545,7 +472,7 @@ object TagDiffer extends DatabaseComponent {
         } yield {
           Map(ContentCategory.Draft -> draftContent, ContentCategory.Live -> liveContent)
         }
-        content.foreach(writeContentToDisk(_, filePrefix))
+        content.foreach(FileCache.writeContentToDisk(_, filePrefix))
         content
     }
 
