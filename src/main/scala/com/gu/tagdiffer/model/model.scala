@@ -1,7 +1,8 @@
 package com.gu.tagdiffer.index.model
 
-import com.gu.tagdiffer.{TagDiffer, R2}
+import com.gu.tagdiffer.TagDiffer
 import com.gu.tagdiffer.TagDiffer.orderAndNumberDiff
+import com.gu.tagdiffer.r2.R2
 import org.joda.time.DateTime
 
 object ContentCategory extends Enumeration {

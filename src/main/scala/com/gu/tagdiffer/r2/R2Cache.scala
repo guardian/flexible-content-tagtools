@@ -1,7 +1,6 @@
-package com.gu.tagdiffer
+package com.gu.tagdiffer.r2
 
-import com.gu.tagdiffer.r2._
-import com.gu.tagdiffer.index.model.{Tagging, Tag}
+import com.gu.tagdiffer.index.model.{Tag, Tagging}
 import org.joda.time.DateTime
 
 case class R2Tag()

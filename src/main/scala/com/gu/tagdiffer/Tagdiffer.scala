@@ -8,7 +8,7 @@ import com.gu.tagdiffer.index.model.TagType
 import com.gu.tagdiffer.index.model.TagType._
 import com.gu.tagdiffer.index.model._
 import com.gu.tagdiffer.flexible.mongoConnect
-import com.gu.tagdiffer.r2.DatabaseComponent
+import com.gu.tagdiffer.r2.{R2, DatabaseComponent}
 import play.api.libs.json._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
