@@ -1,9 +1,8 @@
-package com.gu.tagdiffer.scaladb
+package com.gu.tagdiffer.r2
 
 import java.sql.{Connection, ResultSet}
 import java.util.Date
 import javax.sql.DataSource
-
 import org.joda.time.{DateTime, LocalDate}
 
 import scalaz.Monoid

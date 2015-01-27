@@ -1,8 +1,8 @@
-package com.gu.tagdiffer.database
+package com.gu.tagdiffer.r2
 
 import com.gu.tagdiffer.index.model.{Section, TagType}
 import com.gu.tagdiffer.index.model.TagType.TagType
-import com.gu.tagdiffer.scaladb._
+import com.gu.tagdiffer.flexible._
 import org.joda.time.DateTime
 
 case class ContentInfo (pageAndContentId: (Long, Long), lastModified: DateTime)

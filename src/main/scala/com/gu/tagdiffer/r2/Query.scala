@@ -1,6 +1,6 @@
-package com.gu.tagdiffer.scaladb
+package com.gu.tagdiffer.r2
 
-import java.sql.{PreparedStatement, Connection}
+import java.sql.{Connection, PreparedStatement}
 
 /**
  * Represents a query that can be executed
@@ -15,7 +15,7 @@ trait Query {
 
   def param(value: Any): Query
 
-  private[scaladb] final def mkStatement(con: Connection): PreparedStatement = {
+  private[r2] final def mkStatement(con: Connection): PreparedStatement = {
     val statement = con.prepareStatement(sql)
 
     parameters.zipWithIndex.foreach { case (p, idx) =>

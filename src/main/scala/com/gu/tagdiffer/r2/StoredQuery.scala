@@ -1,7 +1,6 @@
-package com.gu.tagdiffer.database
+package com.gu.tagdiffer.r2
 
 import io.Source
-import com.gu.tagdiffer.scaladb.Query
 import java.util.concurrent.ConcurrentHashMap
 import collection.JavaConversions._
 

@@ -1,4 +1,4 @@
-package com.gu.tagdiffer.scaladb
+package com.gu.tagdiffer.flexible
 
 import com.gu.management.Loggable
 import com.gu.tagdiffer.Config

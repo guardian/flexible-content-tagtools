@@ -1,7 +1,7 @@
 package com.gu.tagdiffer.index.model
 
-import com.gu.tagdiffer.R2
 import com.gu.tagdiffer.index.model.TagType.TagType
+import com.gu.tagdiffer.r2.R2
 
 object TagType extends Enumeration {
   type TagType = Value

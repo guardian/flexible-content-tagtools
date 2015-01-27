@@ -1,11 +1,10 @@
-package com.gu.tagdiffer.component
+package com.gu.tagdiffer.r2
 
-import javax.sql.DataSource
 import java.util.Properties
-import oracle.jdbc.pool.OracleDataSource
-import com.gu.tagdiffer.scaladb.Database
+import javax.sql.DataSource
+
 import com.gu.tagdiffer.Config
-import com.gu.tagdiffer.provider.DatabaseProvider
+import oracle.jdbc.pool.OracleDataSource
 
 trait DatabaseComponent extends DatabaseProvider {
 
