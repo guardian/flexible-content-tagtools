@@ -15,7 +15,7 @@ trait Query {
 
   def param(value: Any): Query
 
-  private[scaladb] final def mkStatement(con: Connection): PreparedStatement = {
+  private[r2] final def mkStatement(con: Connection): PreparedStatement = {
     val statement = con.prepareStatement(sql)
 
     parameters.zipWithIndex.foreach { case (p, idx) =>

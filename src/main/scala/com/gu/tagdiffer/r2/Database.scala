@@ -3,7 +3,6 @@ package com.gu.tagdiffer.r2
 import java.sql.{Connection, ResultSet}
 import java.util.Date
 import javax.sql.DataSource
-import com.gu.tagdiffer.r2.Query
 import org.joda.time.{DateTime, LocalDate}
 
 import scalaz.Monoid

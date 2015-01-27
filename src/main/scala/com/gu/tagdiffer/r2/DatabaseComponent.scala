@@ -4,7 +4,6 @@ import java.util.Properties
 import javax.sql.DataSource
 
 import com.gu.tagdiffer.Config
-import com.gu.tagdiffer.r2.DatabaseProvider
 import oracle.jdbc.pool.OracleDataSource
 
 trait DatabaseComponent extends DatabaseProvider {

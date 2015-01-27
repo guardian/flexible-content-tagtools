@@ -1,7 +1,5 @@
 package com.gu.tagdiffer.r2
 
-import com.gu.tagdiffer.r2.Query
-
 import io.Source
 import java.util.concurrent.ConcurrentHashMap
 import collection.JavaConversions._

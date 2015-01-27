@@ -109,7 +109,6 @@ object Representation {
           "type" -> o.tagType.toString,
           "internalName" -> o.internalName,
           "externalName" -> o.externalName,
-          "slug" -> ???,
           "section" -> o.section
         )
       )
@@ -119,7 +118,7 @@ object Representation {
   val TaggingWritesWithLead = new Writes[Tagging]{
     override def writes(o: Tagging): JsValue =
       TaggingWrites.writes(o) match {
-        case fields:JsObject => fields ++ Json.obj("isLead" -> o.isLead
+        case fields:JsObject => fields ++ Json.obj("isLead" -> o.isLead)
         case _ => throw new IllegalArgumentException("TaggingWrites didn't return JsObject")
       }
   }

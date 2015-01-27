@@ -313,7 +313,7 @@ object TagDiffer extends DatabaseComponent {
           val r2TagsString = r2Tags.map(_.toString).getOrElse("No content")
           val fixTagsString = fixTags.toString
 
-          s"$flexiTagsString, $r2TagsString, $fixTagsString"
+          s""""$flexiTagsString", "$r2TagsString", "$fixTagsString""""
         }
 
         List(

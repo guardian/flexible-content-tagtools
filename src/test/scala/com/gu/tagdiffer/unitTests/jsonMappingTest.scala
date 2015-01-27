@@ -12,6 +12,8 @@ import play.api.libs.json._
 import play.api.libs.functional.syntax._
 import com.gu.tagdiffer.unitTests.TestTags._
 
+import scala.util.parsing.json.JSONObject
+
 case class TagMapping (pageId: String,
                        contentId: ContentId,
                        lastModifiedFlexi: DateTime,
@@ -43,8 +45,8 @@ class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
   implicit val SectionFormats = FileCache.SectionFormats
   implicit val TagTypeFormat: Reads[TagType.Value] = EnumUtils.enumReads(TagType)
   implicit val TagFormats: Reads[Tag] = (
-    (__ \ "tagId").read[Long] and
-      (__ \ "tagType").read[TagType] and
+    (__ \ "id").read[Long] and
+      (__ \ "type").read[TagType] and
       (__ \ "internalName").read[String] and
       (__ \ "externalName").read[String] and
       (__ \ "section").read[Section] and
