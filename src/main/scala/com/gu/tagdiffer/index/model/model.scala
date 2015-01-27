@@ -78,8 +78,14 @@ case class R2Tags(allTags: List[Tagging]) extends Tags {
   lazy val publications: List[Tagging] = allTags.filter(_.tagType == TagType.Publication)
   lazy val book: List[Tagging] = allTags.filter(_.tagType == TagType.Book)
   lazy val bookSection: List[Tagging] = allTags.filter(_.tagType == TagType.BookSection)
-}
 
+  override def toString = allTags.map(_.toString).mkString("\n")
+}
 case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publications: List[Tagging], book: List[Tagging], bookSection: List[Tagging]) extends Tags {
   lazy val allTags = other ::: contributors ::: publications ::: book ::: bookSection
+
+  def tagToStringWithMarker (tags: List[Tagging], marker: String): List[String] = tags.map( t => s"[$marker] $t")
+
+  override def toString = (tagToStringWithMarker(other, "M") ::: tagToStringWithMarker(contributors, "C") ::: tagToStringWithMarker(publications, "P") :::
+    tagToStringWithMarker(book, "B") ::: tagToStringWithMarker(bookSection, "S")).mkString("\n")
 }

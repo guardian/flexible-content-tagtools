@@ -53,7 +53,7 @@ object TagDiffer extends DatabaseComponent {
   def compareDeltas(deltas: List[(Set[Tagging],Set[Tagging], String)], name:String): ComparatorResult = {
     val deltaCount = deltas.groupBy(delta => (delta._1, delta._2)).mapValues(v => (v.size, v.head._3)).toList.sortBy(_._2).reverse
     val lines = deltaCount.map { case ((r2, flex), (count, contentID)) =>
-      val r2Tags = r2.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
+      val r2Tags = r2.toList.sortBy(_.internalName)
       val flexTags = flex.toList.sortBy(_.internalName).mkString("\"", "\n", "\"")
       s"$r2Tags,$flexTags,$count, ${Config.composerContentPrefix}$contentID"
     }
@@ -270,6 +270,45 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
+  implicit val ContentCategoryFormats = new Format[Category] {
+    def reads(json: JsValue): JsResult[Category] = json match {
+      case JsString(value) =>
+        try {
+          val enum = ContentCategory.withName(value)
+          JsSuccess(enum)
+        } catch {
+          case e:NoSuchElementException =>
+            JsError(s"Invalid enum value: $value")
+        }
+      case _ => JsError(s"Invalid type for enum value (expected JsString)")
+    }
+
+    def writes(o: Category): JsValue = JsString(o.toString)
+  }
+
+  implicit val TagTypeFormats = new Format[TagType] {
+    def reads(json: JsValue): JsResult[TagType] = json match {
+      case JsString(value) =>
+        try {
+          val enum = TagType.withName(value)
+          JsSuccess(enum)
+        } catch {
+          case e:NoSuchElementException =>
+            JsError(s"Invalid enum value: $value")
+        }
+      case _ => JsError(s"Invalid type for enum value (expected JsString)")
+    }
+
+    def writes(o: TagType): JsValue = JsString(o.toString)
+  }
+
+  implicit val SectionFormats = Json.format[Section]
+  implicit val TagFormats = Json.format[Tag]
+  implicit val TaggingFormats = Json.format[Tagging]
+  implicit val R2TagsFormats = Json.format[R2Tags]
+  implicit val FlexiTagsFormats = Json.format[FlexiTags]
+  implicit val ContentFormats = Json.format[Content]
+
   val correctTagMapping = new ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
       // Find and filter content with tag discrepancies
@@ -297,11 +336,25 @@ object TagDiffer extends DatabaseComponent {
         // create mapping of tags with migrated section
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
 
-        val mapping = correctFlexiRepresentation(discrepancy, contentList, tagMigrationCache)
+        val discrepancyFix = correctFlexiRepresentation(discrepancy.take(100), contentList, tagMigrationCache)
+        val mapping = jsonTagMapper(contentList, discrepancyFix)
+
+        val lines = discrepancyFix.map { d =>
+          val content = contentList.find(_.contentId == d._1)
+          val flexiTags = content.map(_.flexiTags)
+          val r2Tags = content.map(_.r2Tags)
+          val fixTags = d._2
+
+          val flexiTagsString = flexiTags.map(_.toString).getOrElse("No content")
+          val r2TagsString = r2Tags.map(_.toString).getOrElse("No content")
+          val fixTagsString = fixTags.toString
+
+          s"$flexiTagsString, $r2TagsString, $fixTagsString"
+        }
 
         List(
           JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping),
-          CSVFileResult(s"${category.toString}-correct-tags-mapping.csv", "", List(""))
+          CSVFileResult(s"${category.toString}-compare-content-mapping.csv", "Flexible, R2, Correct", lines.take(100))
         )
       }
     }
@@ -309,8 +362,7 @@ object TagDiffer extends DatabaseComponent {
 
   def correctFlexiRepresentation(discrepancy: Map[ContentId, List[(Set[Tagging], Set[Tagging], ContentId)]],
                                  contentList: List[Content],
-                                 tagMigrationCache: Map[Long, Tagging]): List[JsObject] = {
-    val discrepancyFix = discrepancy.mapValues{ c =>
+                                 tagMigrationCache: Map[Long, Tagging]): Map[ContentId, FlexiTags] = discrepancy.mapValues{ c =>
       val discrepancy = c.head
       val content = contentList.find(_.contentId == discrepancy._3)
 
@@ -399,29 +451,24 @@ object TagDiffer extends DatabaseComponent {
 
       val tags = sharedTags.getOrElse(List.empty[Tagging]) ++ updatedR2Tags ++ ft  ++ extraPublicationTags
 
-      TagCorrected(tags, contributors, publication, book, bookSection)
-    }
-
-    jsonTagMapper(contentList, discrepancyFix)
+      FlexiTags(tags, contributors, publication.toList, book.toList, bookSection.toList)
   }
 
-  private def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, TagCorrected]): List[JsObject] = contentList.filter ( c =>
+  private def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, FlexiTags]): List[JsObject] = contentList.filter ( c =>
     discrepancyFix.contains(c.contentId)).map { content =>
     val alltags = discrepancyFix.get(content.contentId).get
     val existInR2Transformer =  (__ \ 'tag \ 'existInR2).json.prune
     val isLeadTransformer =  (__ \ 'isLead).json.prune
 
     val taxonomy = Json.obj(
-      "tags" -> alltags.tags,
+      "tags" -> alltags.other,
       "contributors" -> alltags.contributors,
-      "publication" -> alltags.publication,
+      "publication" -> alltags.publications.headOption,
       "newspaper" -> Json.obj(
-        "book" -> alltags.book,
-        "bookSection" -> alltags.bookSection
+        "book" -> alltags.book.headOption,
+        "bookSection" -> alltags.bookSection.headOption
       )
     )
-
-    val stringJson = taxonomy.toString()
 
     // JsArrays (validate and transform)
     val tags = (taxonomy \\ "tags").map(jv => jv.validate[Seq[JsObject]].get).head
@@ -446,48 +493,9 @@ object TagDiffer extends DatabaseComponent {
     jsonMapping
   }
 
-
   // The list of comparators to apply to data
-  val comparators: List[ContentComparator] = List(summaryDiff, setOfDeltasWithoutRemappedTags, correctTagMapping)
+  val comparators: List[ContentComparator] = List(correctTagMapping)
 
-  implicit val ContentCategoryFormats = new Format[Category] {
-    def reads(json: JsValue): JsResult[Category] = json match {
-      case JsString(value) =>
-        try {
-          val enum = ContentCategory.withName(value)
-          JsSuccess(enum)
-        } catch {
-          case e:NoSuchElementException =>
-            JsError(s"Invalid enum value: $value")
-        }
-      case _ => JsError(s"Invalid type for enum value (expected JsString)")
-    }
-
-    def writes(o: Category): JsValue = JsString(o.toString)
-  }
-
-  implicit val TagTypeFormats = new Format[TagType] {
-    def reads(json: JsValue): JsResult[TagType] = json match {
-      case JsString(value) =>
-        try {
-          val enum = TagType.withName(value)
-          JsSuccess(enum)
-        } catch {
-          case e:NoSuchElementException =>
-            JsError(s"Invalid enum value: $value")
-        }
-      case _ => JsError(s"Invalid type for enum value (expected JsString)")
-    }
-
-    def writes(o: TagType): JsValue = JsString(o.toString)
-  }
-
-  implicit val SectionFormats = Json.format[Section]
-  implicit val TagFormats = Json.format[Tag]
-  implicit val TaggingFormats = Json.format[Tagging]
-  implicit val R2TagsFormats = Json.format[R2Tags]
-  implicit val FlexiTagsFormats = Json.format[FlexiTags]
-  implicit val ContentFormats = Json.format[Content]
   // Write data to cache file as a Json
   def writeContentToDisk(content: Map[Category, List[Content]], filePrefix: String): Unit = {
     content.foreach { case (key, value) => key.toString -> value
@@ -504,7 +512,7 @@ object TagDiffer extends DatabaseComponent {
   // Get data from cache file
   def sourceContentFromDisk(filePrefix: String): Map[Category, List[Content]] = {
     val categories: Set[Category] = ContentCategory.values.toSet
-    categories.map { category =>
+    categories.filter(_ == ContentCategory.Live).map { category =>
       val file = s"$filePrefix-${category.toString}.cache"
       System.err.println(s"Attempting to read and parse content from $file")
       val contentLines = Source.fromFile(file).getLines()
