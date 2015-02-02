@@ -299,18 +299,21 @@ object TagDiffer extends DatabaseComponent {
         // fix and map
         val discrepancyMap = discrepancy.mapValues(d => (d.head._1, d.head._2)).map{ d =>
           val content = contentList.find(_.contentId == d._1).get
+          //ContentID -> (r2Diff, FlexiDiff, originalR2Tags, originalFlexiTags)
           d._1 -> (d._2._1, d._2._2, content.r2Tags, content.flexiTags)
         }
 
 
         val discrepancyFix = Representation.correctFlexiRepresentation(discrepancyMap, tagMigrationCache)
-        val mapping = Representation.jsonTagMapper(contentList, discrepancyFix)
+        val mapping = Representation.jsonTagMapper(contentList, discrepancyFix.mapValues(_._1))
+
+        val groupedDiscreapncy = discrepancyFix.groupBy(_._2)
 
         val lines = discrepancyFix.map { d =>
           val content = contentList.find(_.contentId == d._1)
           val flexiTags = content.map(_.flexiTags)
           val r2Tags = content.map(_.r2Tags)
-          val fixTags = d._2
+          val fixTags = d._2._1
 
           val flexiTagsString = flexiTags.map(_.toString).getOrElse("No content")
           val r2TagsString = r2Tags.map(_.toString).getOrElse("No content")
