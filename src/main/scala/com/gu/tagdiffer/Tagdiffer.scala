@@ -296,7 +296,14 @@ object TagDiffer extends DatabaseComponent {
 
         // create mapping of tags with migrated section
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
-        val discrepancyFix = Representation.correctFlexiRepresentation(discrepancy, contentList, tagMigrationCache)
+        // fix and map
+        val discrepancyMap = discrepancy.mapValues(d => (d.head._1, d.head._2)).map{ d =>
+          val content = contentList.find(_.contentId == d._1).get
+          d._1 -> (d._2._1, d._2._2, content.r2Tags, content.flexiTags)
+        }
+
+
+        val discrepancyFix = Representation.correctFlexiRepresentation(discrepancyMap, tagMigrationCache)
         val mapping = Representation.jsonTagMapper(contentList, discrepancyFix)
 
         val lines = discrepancyFix.map { d =>

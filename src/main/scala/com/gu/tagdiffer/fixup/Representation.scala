@@ -5,16 +5,13 @@ import com.gu.tagdiffer.index.model.`package`._
 import play.api.libs.json._
 
 object Representation {
-  def correctFlexiRepresentation(discrepancy: Map[ContentId, List[(Set[Tagging], Set[Tagging], ContentId)]],
-                                 contentList: List[Content],
-                                 tagMigrationCache: Map[Long, Tagging]): Map[ContentId, FlexiTags] = discrepancy.mapValues{ c =>
-    val discrepancy = c.head
-    val content = contentList.find(_.contentId == discrepancy._3)
+  def correctFlexiRepresentation(discrepancyMap: Map[ContentId, (Set[Tagging], Set[Tagging], R2Tags, FlexiTags)],
+                                 tagMigrationCache: Map[Long, Tagging]): Map[ContentId, FlexiTags] = discrepancyMap.map { discrepancy =>
 
-    val r2DiffTags = discrepancy._1
-    val flexiDiffTags = discrepancy._2
-    val originalTagsInR2 = content.map(_.r2Tags).get
-    val originalTagsInFlexi = content.map(_.flexiTags).get
+    val r2DiffTags = discrepancy._2._1
+    val flexiDiffTags = discrepancy._2._2
+    val originalTagsInR2 = discrepancy._2._3
+    val originalTagsInFlexi = discrepancy._2._4
 
     val contributors = fixContributorTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi)
     val publication = fixPublicationTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi)
@@ -23,7 +20,7 @@ object Representation {
     // Add extraPublicationTag to mainTags
     val tags = mainTags ++ publication._2
 
-    FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
+    discrepancy._1 -> FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
   }
 
   private def fixContributorTags(r2Diff:Set[Tagging],
