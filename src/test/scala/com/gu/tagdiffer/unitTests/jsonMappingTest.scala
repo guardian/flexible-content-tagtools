@@ -263,24 +263,26 @@ class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
 
   feature("Tag renaming/migration") {
     scenario("the tag has been renamed in R2 but keeps the same ID") {
-      val flexiTags = FlexiTags(List(mainTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
-      val r2Tags = R2Tags(List(mainTagRenamed, contributorTag, publicationTag, bookTag, bookSectionTag))
+      val flexiTags = FlexiTags(List(mainTag, noLeadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
+      val r2Tags = R2Tags(List(mainTagRenamed, noLeadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
 
       val mapContentCategory = Map(ContentCategory.Live -> List[Content](content))
       TagDiffer.correctTagMapping.compare(mapContentCategory, Map.empty[Long, Long]).map {
         case JSONFileResult(filename, jsonList) =>
           val res = jsonList.head.validate[TagMapping].get
-          val renamed = (res.tags.length == 1) && (res.tags.head.internalName == mainTagRenamed.internalName)
+          val renamed = (res.tags.length == 2) && (res.tags.exists(_.internalName.contentEquals(mainTagRenamed.internalName)))
           then("only the renamed tag is in the mapping")
           renamed should be(true)
+          and("the original order is preserved")
+          (res.tags.head.internalName == mainTagRenamed.internalName) should be(true)
         case CSVFileResult(filename, header, lines) => None
       }
     }
 
     scenario("the tag ID has changed after section migration") {
-      val flexiTags = FlexiTags(List(oldTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
-      val r2Tags = R2Tags(List(newTag, contributorTag, publicationTag, bookTag, bookSectionTag))
+      val flexiTags = FlexiTags(List(oldTag, noLeadTag), List(contributorTag), List(publicationTag), List(bookTag), List(bookSectionTag))
+      val r2Tags = R2Tags(List(newTag, noLeadTag, contributorTag, publicationTag, bookTag, bookSectionTag))
       val content = Content("1", "11", "article", createTimestamp, lastModified, lastModified, flexiTags, r2Tags)
       val oldToNewTagId = Map(oldTag.tagId -> newTag.tagId)
 
@@ -288,9 +290,11 @@ class JsonMappingTest extends FeatureSpec with GivenWhenThen with ShouldMatchers
       TagDiffer.correctTagMapping.compare(mapContentCategory, oldToNewTagId).map {
         case JSONFileResult(filename, jsonList) =>
           val res = jsonList.head.validate[TagMapping].get
-          val migrated = (res.tags.length == 1) && (res.tags.head.tagId == newTag.tagId)
+          val migrated = (res.tags.length == 2) && (res.tags.exists(_.tagId == newTag.tagId))
           then("only the new tag is in the mapping")
           migrated should be(true)
+          and("the original order is preserved")
+          (res.tags.head.tagId == newTag.tagId) should be(true)
         case CSVFileResult(filename, header, lines) => None
       }
     }

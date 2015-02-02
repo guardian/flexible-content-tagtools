@@ -71,20 +71,19 @@ object Representation {
       (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
     val sharedTags = content.map(c => c.r2Tags.other intersect c.flexiTags.other)
 
-    val updatedFlexiTags = flexiTags.map ( t => t.tagId match {
+    val updatedFlexiTags = flexiTags.map( t => t.tagId match {
       case id if (tagMigrationCache.contains(id)) => {
         val newTag = tagMigrationCache.get(id)
         Tagging(newTag.get.tag, t.isLead)
       }
       case _ => t
-    }
-    ).filter(_.tag.existInR2.getOrElse(false))
-
-    val updatedR2Tags = r2Tags.map { r2 => // fix lead tag discrepancy among tags with migrated section
-      val flexiOnlyTags = updatedFlexiTags.groupBy(_.tagId)
+    }).filter(_.tag.existInR2.getOrElse(false))
+    // fix lead tag discrepancy among tags with migrated section
+    val tagsOnlyInFlexi = updatedFlexiTags.groupBy(_.tagId)
+    val updatedR2Tags = r2Tags.map { r2 =>
       r2.tagId match {
-        case id if (flexiOnlyTags.contains(id)) => {
-          val isFlexiTagLead = flexiOnlyTags.get(id).map(_.head.isLead)
+        case id if (tagsOnlyInFlexi.contains(id)) => {
+          val isFlexiTagLead = tagsOnlyInFlexi.get(id).map(_.head.isLead)
           Tagging(r2.tag, r2.isLead || isFlexiTagLead.getOrElse(false))
         }
         case _ => r2
@@ -93,10 +92,24 @@ object Representation {
 
     // R2 has now the correct representation of migrated tags and lead tags discrepancy
     val ft = updatedFlexiTags.filterNot(t => updatedR2Tags.exists(_.tagId == t.tagId))
+    // Preserve the original order (R2 order)
+    val r2OriginalTags = content.map(_.r2Tags).get
 
-    val tags = sharedTags.getOrElse(List.empty[Tagging]) ++ updatedR2Tags ++ ft  ++ extraPublicationTags
+    val orderedUpdatedTags = for {
+      t <- r2OriginalTags.other
 
-    FlexiTags(tags, contributors, publication.toList, book.toList, bookSection.toList)
+      ut = if (sharedTags.getOrElse(List.empty[Tagging]).contains(t)) {
+        Some(t)
+      } else if (updatedR2Tags.map(_.tagId).contains(t.tagId)) {
+        updatedR2Tags.find(_.tagId == t.tagId)
+      } else {
+        None
+      }
+    } yield ut
+
+    val tags = orderedUpdatedTags.filter(_.isDefined).map(_.get) ++ updatedR2Tags ++ ft  ++ extraPublicationTags
+
+    FlexiTags(tags.distinct, contributors, publication.toList, book.toList, bookSection.toList)
   }
 
   implicit val SectionWrites = Json.writes[Section]
