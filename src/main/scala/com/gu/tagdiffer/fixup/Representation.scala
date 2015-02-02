@@ -63,7 +63,7 @@ object Representation {
     }
 
     val extraPublicationTags = (r2Publication - fixedPublicationTag.getOrElse(null)) ++
-      (sharedPublicationTag - fixedPublicationTag.getOrElse(null)) // only r2 can have multiple pub tags
+      (sharedPublicationTag.toSet - fixedPublicationTag.getOrElse(null)) // only r2 can have multiple pub tags
 
     (fixedPublicationTag, extraPublicationTags)
   }

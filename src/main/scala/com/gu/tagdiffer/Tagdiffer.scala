@@ -296,32 +296,7 @@ object TagDiffer extends DatabaseComponent {
 
         // create mapping of tags with migrated section
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
-
-        // TODO: Remove take(100)
-        val migratedSectionTags = diffTags.filter(d => d._2.head._2.map(_.tagId).exists(tagMigrationCache.contains(_))).take(5)
-        val multiplePublicationTag = diffTags.filter{ d =>
-          if (d._2.head._1.filter(_.tag.tagType == TagType.Publication).size > 1) true else false
-        }.take(5)
-        val tagRenaming = diffTags.filter{ d =>
-          val r2 = d._2.head._1
-          val flexi = d._2.head._2
-          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (r2tag.internalName != r2tag.externalName)))
-        }.take(5)
-        val missingLeadTagR2 = diffTags.filter{ d =>
-          val r2 = d._2.head._1
-          val flexi = d._2.head._2
-          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (fTag.isLead) && (!r2tag.isLead)))
-        }.take(5)
-        val missingLeadTagFlexi = diffTags.filter{ d =>
-          val r2 = d._2.head._1
-          val flexi = d._2.head._2
-          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (!fTag.isLead) && (r2tag.isLead)))
-        }.take(5)
-        val decuplicatedDiscrepancy = newspaperTagsDuplication.take(5) ++ migratedSectionTags ++
-          multiplePublicationTag ++ tagRenaming ++ missingLeadTagFlexi ++ missingLeadTagR2
-
-        Map[ContentId -> ((Set[Tagging], Set[Tagging]), (FlexiTags, R2Tags))]
-        val discrepancyFix = Representation.correctFlexiRepresentation(decuplicatedDiscrepancy, contentList, tagMigrationCache)
+        val discrepancyFix = Representation.correctFlexiRepresentation(discrepancy, contentList, tagMigrationCache)
         val mapping = Representation.jsonTagMapper(contentList, discrepancyFix)
 
         val lines = discrepancyFix.map { d =>
