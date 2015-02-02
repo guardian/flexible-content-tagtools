@@ -154,10 +154,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   def r2FlexDiffTuples(contentList: List[Content]): List[(Set[Tagging], Set[Tagging], ContentId)] = contentList.map { content =>
-    val r2TagSet = content.r2Tags.allTags.toSet
-    val flexTagSet = content.flexiTags.allTags.toSet
-    val onlyR2 = r2TagSet diff flexTagSet
-    val onlyFlex = flexTagSet diff r2TagSet
+    val (onlyR2, onlyFlex) = content.r2Tags diff content.flexiTags
     (onlyR2, onlyFlex, content.contentId)
   }
 
@@ -274,54 +271,24 @@ object TagDiffer extends DatabaseComponent {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
       // Find and filter content with tag discrepancies
       contentMap flatMap { case(category, contentList) =>
+
         val tuples = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty)
-        val diffTags = tuples.groupBy(_._3)
-
-        /*
-        * Find content that only has duplicated newspaper tags in the main tag list
-        * This problem comes from inCopy integration and only affect flexible-content
-        * (Fixed in the integration but old content is still affected)
-        */
-        val newspaperTagsDuplication = contentList.filterNot(c => diffTags.contains(c.contentId)).map { content =>
-          val duplicatedContent = content.flexiTags.other.filter(t => (t.tagType == TagType.Book) || (t.tagType == BookSection))
-          val res = if (!duplicatedContent.isEmpty) {
-            Some((Set.empty[Tagging], Set.empty[Tagging], content.contentId))
-          } else {
-            None
-          }
-          res
-        }.filter(_.isDefined).map(_.get).groupBy(_._3)
-
-        val discrepancy = diffTags ++ newspaperTagsDuplication
-
         // create mapping of tags with migrated section
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
-        // fix and map
-        val discrepancyMap = discrepancy.mapValues(d => (d.head._1, d.head._2)).map{ d =>
-          val content = contentList.find(_.contentId == d._1).get
-          //ContentID -> (r2Diff, FlexiDiff, originalR2Tags, originalFlexiTags)
-          d._1 -> (d._2._1, d._2._2, content.r2Tags, content.flexiTags)
+
+        val tagToContent = contentList.groupBy(c => (c.flexiTags, c.r2Tags))
+
+        val proposedTagInfoToContent = tagToContent.flatMap { case ((flexTags, r2Tags), content) =>
+          val proposedFlexiTags: FlexiTags = Representation.correctFlexiRepresentation(flexTags, r2Tags, tagMigrationCache)
+          if (proposedFlexiTags == flexTags && flexTags.setEquals(r2Tags)) None else Some((flexTags, r2Tags, proposedFlexiTags) -> content)
         }
 
-
-        val discrepancyFix = discrepancyMap.mapValues { case (r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi) =>
-          val proposedFlexTags = Representation.correctFlexiRepresentation(
-            r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi, tagMigrationCache)
-          (proposedFlexTags, originalTagsInR2, originalTagsInFlexi)
+        val mapping = proposedTagInfoToContent.flatMap { case ((_, _, proposedTags), content) =>
+          content.map(c => Representation.jsonTagMapper(c, proposedTags))
         }
-        val mapping = Representation.jsonTagMapper(contentList, discrepancyFix.mapValues(_._1))
 
-        val lines = discrepancyFix.map { d =>
-          val content = contentList.find(_.contentId == d._1)
-          val flexiTags = content.map(_.flexiTags)
-          val r2Tags = content.map(_.r2Tags)
-          val fixTags = d._2._1
-
-          val flexiTagsString = flexiTags.map(_.toString).getOrElse("No content")
-          val r2TagsString = r2Tags.map(_.toString).getOrElse("No content")
-          val fixTagsString = fixTags.toString
-
-          s""""$flexiTagsString", "$r2TagsString", "$fixTagsString""""
+        val lines = proposedTagInfoToContent.map { case ((flexiTags, r2Tags, fixTags), _) =>
+          s""""$flexiTags", "$r2Tags", "$fixTags""""
         }
 
         List(

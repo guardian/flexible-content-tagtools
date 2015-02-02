@@ -5,18 +5,25 @@ import com.gu.tagdiffer.index.model.`package`._
 import play.api.libs.json._
 
 object Representation {
-  def correctFlexiRepresentation(r2DiffTags: Set[Tagging], flexiDiffTags: Set[Tagging], originalTagsInR2: R2Tags, originalTagsInFlexi: FlexiTags,
+  def correctFlexiRepresentation(flexiTags: FlexiTags,
+                                 r2Tags: R2Tags, 
                                  tagMigrationCache: Map[Long, Tagging]): FlexiTags = {
 
-    val contributors = fixContributorTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi)
-    val publication = fixPublicationTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi)
-    val newspaper = fixNewspaperTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi)
-    val mainTags = fixMainTags(r2DiffTags, flexiDiffTags, originalTagsInR2, originalTagsInFlexi, tagMigrationCache)
-    // Add extraPublicationTag to mainTags
-    val tags = mainTags ++ publication._2
+    val (onlyR2, onlyFlex) = r2Tags diff flexiTags
+    
+    if (r2Tags.allTags.size == flexiTags.allTags.size && onlyFlex.isEmpty && onlyR2.isEmpty) flexiTags
+    else {
+      val contributors = fixContributorTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val publication = fixPublicationTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val newspaper = fixNewspaperTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val mainTags = fixMainTags(onlyR2, onlyFlex, r2Tags, flexiTags, tagMigrationCache)
+      // Add extraPublicationTag to mainTags
+      val tags = mainTags ++ publication._2
 
-    FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
+      FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
+    }
   }
+
 
   private def fixContributorTags(r2Diff:Set[Tagging],
                                  flexiDiff:Set[Tagging],
@@ -168,22 +175,19 @@ object Representation {
       }
   }
 
-  def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, FlexiTags]): List[JsObject] = contentList.filter ( c =>
-    discrepancyFix.contains(c.contentId)).map { content =>
-    val alltags = discrepancyFix.get(content.contentId).get
-
+  def jsonTagMapper (content: Content, tags: FlexiTags): JsObject = {
     Json.obj(
       "pageId" -> content.pageid,
       "contentId" -> content.contentId,
       "lastModifiedFlexi" -> content.lastModifiedFlexi,
       "lastModifiedR2" -> content.lastModifiedR2,
       "taxonomy" -> Json.obj(
-        "tags" -> alltags.other.map(Json.toJson(_)(TaggingWritesWithLead)),
-        "contributors" -> alltags.contributors,
-        "publication" -> alltags.publications.headOption,
+        "tags" -> tags.other.map(Json.toJson(_)(TaggingWritesWithLead)),
+        "contributors" -> tags.contributors,
+        "publication" -> tags.publications.headOption,
         "newspaper" -> Json.obj(
-          "book" -> alltags.book.headOption,
-          "bookSection" -> alltags.bookSection.headOption
+          "book" -> tags.book.headOption,
+          "bookSection" -> tags.bookSection.headOption
         )
       )
     )
