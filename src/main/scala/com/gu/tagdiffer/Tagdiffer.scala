@@ -1,7 +1,6 @@
 package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
-import java.util.NoSuchElementException
 import com.gu.tagdiffer.cache.FileCache
 import com.gu.tagdiffer.fixup.Representation
 import com.gu.tagdiffer.index.model.ContentCategory._
@@ -14,7 +13,6 @@ import play.api.libs.json._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.io.Source
 import scala.util.control.NonFatal
 
 
@@ -300,7 +298,30 @@ object TagDiffer extends DatabaseComponent {
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
 
         // TODO: Remove take(100)
-        val discrepancyFix = Representation.correctFlexiRepresentation(discrepancy.take(100), contentList, tagMigrationCache)
+        val migratedSectionTags = diffTags.filter(d => d._2.head._2.map(_.tagId).exists(tagMigrationCache.contains(_))).take(5)
+        val multiplePublicationTag = diffTags.filter{ d =>
+          if (d._2.head._1.filter(_.tag.tagType == TagType.Publication).size > 1) true else false
+        }.take(5)
+        val tagRenaming = diffTags.filter{ d =>
+          val r2 = d._2.head._1
+          val flexi = d._2.head._2
+          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (r2tag.internalName != r2tag.externalName)))
+        }.take(5)
+        val missingLeadTagR2 = diffTags.filter{ d =>
+          val r2 = d._2.head._1
+          val flexi = d._2.head._2
+          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (fTag.isLead) && (!r2tag.isLead)))
+        }.take(5)
+        val missingLeadTagFlexi = diffTags.filter{ d =>
+          val r2 = d._2.head._1
+          val flexi = d._2.head._2
+          r2.exists(r2tag => flexi.exists(fTag => (r2tag.tagId == fTag.tagId) && (!fTag.isLead) && (r2tag.isLead)))
+        }.take(5)
+        val decuplicatedDiscrepancy = newspaperTagsDuplication.take(5) ++ migratedSectionTags ++
+          multiplePublicationTag ++ tagRenaming ++ missingLeadTagFlexi ++ missingLeadTagR2
+
+        Map[ContentId -> ((Set[Tagging], Set[Tagging]), (FlexiTags, R2Tags))]
+        val discrepancyFix = Representation.correctFlexiRepresentation(decuplicatedDiscrepancy, contentList, tagMigrationCache)
         val mapping = Representation.jsonTagMapper(contentList, discrepancyFix)
 
         val lines = discrepancyFix.map { d =>
@@ -318,7 +339,7 @@ object TagDiffer extends DatabaseComponent {
 
         List(
           JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping),
-          CSVFileResult(s"${category.toString}-compare-content-mapping.csv", "Flexible, R2, Correct", lines.take(100))
+          CSVFileResult(s"${category.toString}-compare-decuplicated-content-mapping.csv", "Flexible, R2, Correct", lines)
         )
       }
     }
