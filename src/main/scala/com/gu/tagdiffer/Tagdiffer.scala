@@ -288,12 +288,13 @@ object TagDiffer extends DatabaseComponent {
         }
 
         val lines = proposedTagInfoToContent.map { case ((flexiTags, r2Tags, fixTags), _) =>
-          s""""$flexiTags", "$r2Tags", "$fixTags""""
+          val diff = fixTags.stringWithDiffs(flexiTags)
+          s""""$flexiTags", "$r2Tags", "${if (diff.startsWith("=")) s"'$diff" else diff}""""
         }
 
         List(
           JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping),
-          CSVFileResult(s"${category.toString}-compare-decuplicated-content-mapping.csv", "Flexible, R2, Correct", lines)
+          CSVFileResult(s"${category.toString}-compare-decuplicated-content-mapping.csv", "Flexible, R2, Correct", lines.take(50))
         )
       }
     }

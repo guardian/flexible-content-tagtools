@@ -99,11 +99,30 @@ case class R2Tags(allTags: List[Tagging]) extends Tags {
 
   override def toString = allTags.map(_.toString).mkString("\n")
 }
+
 case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publications: List[Tagging], book: List[Tagging], bookSection: List[Tagging]) extends Tags {
+  def stringWithDiffs(original: FlexiTags): String = {
+    val (onlyNew, onlyOriginal) = diff(original)
+    val originalSet = original.allTags.toSet
+    tagMarkerTuples.map{ case (tag, marker) =>
+      val prefix: String =
+        if (onlyNew.contains(tag)) "+"
+        else if (originalSet.contains(tag)) "="
+        else "?"
+      s"$prefix[$marker] $tag"
+    }.mkString("\n")
+  }
+
   lazy val allTags = other ::: contributors ::: publications ::: book ::: bookSection
 
-  def tagToStringWithMarker (tags: List[Tagging], marker: String): List[String] = tags.map( t => s"[$marker] $t")
+  def tagToStringWithMarker (tags: List[Tagging], marker: String): List[(Tagging,String)] = tags.map( t => (t,marker))
+  lazy val tagMarkerTuples =
+    tagToStringWithMarker(other, "M") :::
+    tagToStringWithMarker(contributors, "C") :::
+    tagToStringWithMarker(publications, "P") :::
+    tagToStringWithMarker(book, "B") :::
+    tagToStringWithMarker(bookSection, "S")
 
-  override def toString = (tagToStringWithMarker(other, "M") ::: tagToStringWithMarker(contributors, "C") ::: tagToStringWithMarker(publications, "P") :::
-    tagToStringWithMarker(book, "B") ::: tagToStringWithMarker(bookSection, "S")).mkString("\n")
+  override def toString = tagMarkerTuples.map{ case (tag, marker) => s"[$marker] $tag" }.mkString("\n")
+
 }
