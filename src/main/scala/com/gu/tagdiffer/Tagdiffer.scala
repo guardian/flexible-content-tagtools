@@ -1,7 +1,6 @@
 package com.gu.tagdiffer
 
 import java.io.{File, PrintWriter}
-import java.util.NoSuchElementException
 import com.gu.tagdiffer.cache.FileCache
 import com.gu.tagdiffer.fixup.Representation
 import com.gu.tagdiffer.index.model.ContentCategory._
@@ -14,7 +13,6 @@ import play.api.libs.json._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.io.Source
 import scala.util.control.NonFatal
 
 
@@ -156,10 +154,7 @@ object TagDiffer extends DatabaseComponent {
   }
 
   def r2FlexDiffTuples(contentList: List[Content]): List[(Set[Tagging], Set[Tagging], ContentId)] = contentList.map { content =>
-    val r2TagSet = content.r2Tags.allTags.toSet
-    val flexTagSet = content.flexiTags.allTags.toSet
-    val onlyR2 = r2TagSet diff flexTagSet
-    val onlyFlex = flexTagSet diff r2TagSet
+    val (onlyR2, onlyFlex) = content.r2Tags diff content.flexiTags
     (onlyR2, onlyFlex, content.contentId)
   }
 
@@ -276,49 +271,29 @@ object TagDiffer extends DatabaseComponent {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult] = {
       // Find and filter content with tag discrepancies
       contentMap flatMap { case(category, contentList) =>
+
         val tuples = r2FlexDiffTuples(contentList).filterNot(c => c._1.isEmpty && c._2.isEmpty)
-        val diffTags = tuples.groupBy(_._3)
-
-        /*
-        * Find content that only has duplicated newspaper tags in the main tag list
-        * This problem comes from inCopy integration and only affect flexible-content
-        * (Fixed in the integration but old content is still affected)
-        */
-        val newspaperTagsDuplication = contentList.filterNot(c => diffTags.contains(c.contentId)).map { content =>
-          val duplicatedContent = content.flexiTags.other.filter(t => (t.tagType == TagType.Book) || (t.tagType == BookSection))
-          val res = if (!duplicatedContent.isEmpty) {
-            Some((Set.empty[Tagging], Set.empty[Tagging], content.contentId))
-          } else {
-            None
-          }
-          res
-        }.filter(_.isDefined).map(_.get).groupBy(_._3)
-
-        val discrepancy = diffTags ++ newspaperTagsDuplication
-
         // create mapping of tags with migrated section
         val tagMigrationCache = mapSectionMigrationTags(tuples.map(t => (t._1, t._2)), oldToNewTagIdMap)
 
-        // TODO: Remove take(100)
-        val discrepancyFix = Representation.correctFlexiRepresentation(discrepancy.take(100), contentList, tagMigrationCache)
-        val mapping = Representation.jsonTagMapper(contentList, discrepancyFix)
+        val tagToContent = contentList.groupBy(c => (c.flexiTags, c.r2Tags))
 
-        val lines = discrepancyFix.map { d =>
-          val content = contentList.find(_.contentId == d._1)
-          val flexiTags = content.map(_.flexiTags)
-          val r2Tags = content.map(_.r2Tags)
-          val fixTags = d._2
+        val proposedTagInfoToContent = tagToContent.flatMap { case ((flexTags, r2Tags), content) =>
+          val proposedFlexiTags: FlexiTags = Representation.correctFlexiRepresentation(flexTags, r2Tags, tagMigrationCache)
+          if (proposedFlexiTags == flexTags && flexTags.setEquals(r2Tags)) None else Some((flexTags, r2Tags, proposedFlexiTags) -> content)
+        }
 
-          val flexiTagsString = flexiTags.map(_.toString).getOrElse("No content")
-          val r2TagsString = r2Tags.map(_.toString).getOrElse("No content")
-          val fixTagsString = fixTags.toString
+        val mapping = proposedTagInfoToContent.flatMap { case ((_, _, proposedTags), content) =>
+          content.map(c => Representation.jsonTagMapper(c, proposedTags))
+        }
 
-          s""""$flexiTagsString", "$r2TagsString", "$fixTagsString""""
+        val lines = proposedTagInfoToContent.map { case ((flexiTags, r2Tags, fixTags), _) =>
+          s""""$flexiTags", "$r2Tags", "$fixTags""""
         }
 
         List(
           JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping),
-          CSVFileResult(s"${category.toString}-compare-content-mapping.csv", "Flexible, R2, Correct", lines.take(100))
+          CSVFileResult(s"${category.toString}-compare-decuplicated-content-mapping.csv", "Flexible, R2, Correct", lines)
         )
       }
     }

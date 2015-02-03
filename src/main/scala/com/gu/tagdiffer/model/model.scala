@@ -71,6 +71,23 @@ trait Tags {
   def publications: List[Tagging]
   def book: List[Tagging]
   def bookSection: List[Tagging]
+
+  /**
+   * Returns a tuple of two sets, the first containing tags that exist in this set but not other and the second
+   * containing tags that exist in the other set but not this set
+   * @param other
+   * @return
+   */
+  def diff(other: Tags) = {
+    val thisTagSet = allTags.toSet
+    val otherTagSet = other.allTags.toSet
+    (thisTagSet diff otherTagSet, otherTagSet diff thisTagSet)
+  }
+
+  def setEquals(other: Tags): Boolean = {
+    val (set1, set2) = diff(other)
+    set1.isEmpty && set2.isEmpty
+  }
 }
 
 case class R2Tags(allTags: List[Tagging]) extends Tags {

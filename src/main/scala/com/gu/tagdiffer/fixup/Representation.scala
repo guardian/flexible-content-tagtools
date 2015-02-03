@@ -5,28 +5,53 @@ import com.gu.tagdiffer.index.model.`package`._
 import play.api.libs.json._
 
 object Representation {
-  def correctFlexiRepresentation(discrepancy: Map[ContentId, List[(Set[Tagging], Set[Tagging], ContentId)]],
-                                 contentList: List[Content],
-                                 tagMigrationCache: Map[Long, Tagging]): Map[ContentId, FlexiTags] = discrepancy.mapValues{ c =>
-    val discrepancy = c.head
-    val content = contentList.find(_.contentId == discrepancy._3)
+  def correctFlexiRepresentation(flexiTags: FlexiTags,
+                                 r2Tags: R2Tags, 
+                                 tagMigrationCache: Map[Long, Tagging]): FlexiTags = {
 
-    // Contributors
-    val r2Contributors = discrepancy._1.filter(_.tagType == TagType.Contributor)
-    val flexiContributors = discrepancy._2.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2.getOrElse(false)))
-    val sharedContributorTags = content.map(c => c.r2Tags.contributors intersect c.flexiTags.contributors)
+    val (onlyR2, onlyFlex) = r2Tags diff flexiTags
+    
+    if (r2Tags.allTags.size == flexiTags.allTags.size && onlyFlex.isEmpty && onlyR2.isEmpty) flexiTags
+    else {
+      val contributors = fixContributorTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val publication = fixPublicationTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val newspaper = fixNewspaperTags(onlyR2, onlyFlex, r2Tags, flexiTags)
+      val mainTags = fixMainTags(onlyR2, onlyFlex, r2Tags, flexiTags, tagMigrationCache)
+      // Add extraPublicationTag to mainTags
+      val tags = mainTags ++ publication._2
 
-    val contributors = if (r2Contributors.nonEmpty || flexiContributors.nonEmpty) {
-      sharedContributorTags.getOrElse(List.empty[Tagging]) ++ flexiContributors ++ r2Contributors
-    } else {
-      sharedContributorTags.getOrElse(List.empty[Tagging])
+      FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
     }
-    // Publication
-    val r2Publication = discrepancy._1.filter(_.tag.tagType == TagType.Publication)
-    val flexiPublication = discrepancy._2.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2.getOrElse(false)))
-    val sharedPublicationTag = content.map(c => c.r2Tags.publications.toSet intersect c.flexiTags.publications.toSet).getOrElse(Set.empty[Tagging])
+  }
+
+
+  private def fixContributorTags(r2Diff:Set[Tagging],
+                                 flexiDiff:Set[Tagging],
+                                 r2Original: R2Tags,
+                                 flexiOriginal: FlexiTags): List[Tagging] = {
+    val r2Contributors = r2Diff.filter(_.tagType == TagType.Contributor)
+    val flexiContributors = flexiDiff.filter(t => (t.tagType == TagType.Contributor) && (t.tag.existInR2.getOrElse(false)))
+    val sharedContributorTags = r2Original.contributors intersect flexiOriginal.contributors
+
+    val fixedContributorTags = if (r2Contributors.nonEmpty || flexiContributors.nonEmpty) {
+      sharedContributorTags ++ flexiContributors ++ r2Contributors
+    } else {
+      sharedContributorTags
+    }
+
+    fixedContributorTags
+  }
+
+  private def fixPublicationTags(r2Diff:Set[Tagging],
+                                 flexiDiff:Set[Tagging],
+                                 r2Original: R2Tags,
+                                 flexiOriginal: FlexiTags): (Option[Tagging], Set[Tagging]) = {
+    val r2Publication = r2Diff.filter(_.tagType == TagType.Publication)
+    val flexiPublication = flexiDiff.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2.getOrElse(false)))
+    val sharedPublicationTag = r2Original.publications intersect flexiOriginal.publications
+
     // R2 can have multiple publication tags. Choose the one in common if so
-    val publication = if (sharedPublicationTag.nonEmpty){
+    val fixedPublicationTag =  if (sharedPublicationTag.nonEmpty){
       sharedPublicationTag.headOption
     } else if (r2Publication.nonEmpty) {
       r2Publication.headOption
@@ -36,16 +61,24 @@ object Representation {
       None
     }
 
-    val extraPublicationTags = (r2Publication - publication.getOrElse(null)) ++
-      (sharedPublicationTag - publication.getOrElse(null))// only r2 can have multiple pub tags
-    // Newspaper (Book and Book Section)
-    val r2Book = discrepancy._1.filter(_.tagType == TagType.Book)
-    val r2BookSection = discrepancy._1.filter(_.tagType == TagType.BookSection)
-    val flexiBook = discrepancy._2.filter(_.tagType == TagType.Book)
-    val flexiBookSection = discrepancy._2.filter(_.tagType == TagType.BookSection)
-    val sharedBookTag = content.map(c => c.r2Tags.book intersect c.flexiTags.book).getOrElse(List.empty[Tagging])
-    val sharedBookSectionTag = content.map(c => c.r2Tags.bookSection intersect c.flexiTags.bookSection).getOrElse(List.empty[Tagging])
-    val book = if (sharedBookTag.nonEmpty) {
+    val extraPublicationTags = (r2Publication - fixedPublicationTag.getOrElse(null)) ++
+      (sharedPublicationTag.toSet - fixedPublicationTag.getOrElse(null)) // only r2 can have multiple pub tags
+
+    (fixedPublicationTag, extraPublicationTags)
+  }
+
+  private def fixNewspaperTags(r2Diff:Set[Tagging],
+                               flexiDiff:Set[Tagging],
+                               r2Original: R2Tags,
+                               flexiOriginal: FlexiTags): (Option[Tagging], Option[Tagging]) = {
+    val r2Book = r2Diff.filter(_.tagType == TagType.Book)
+    val r2BookSection = r2Diff.filter(_.tagType == TagType.BookSection)
+    val flexiBook = flexiDiff.filter(_.tagType == TagType.Book)
+    val flexiBookSection = flexiDiff.filter(_.tagType == TagType.BookSection)
+    val sharedBookTag = r2Original.book intersect flexiOriginal.book
+    val sharedBookSectionTag = r2Original.bookSection intersect flexiOriginal.bookSection
+
+    val fixedBook = if (sharedBookTag.nonEmpty) {
       sharedBookTag.headOption
     } else if (r2Book.nonEmpty) {
       r2Book.headOption
@@ -55,7 +88,7 @@ object Representation {
       None
     }
 
-    val bookSection = if (sharedBookSectionTag.nonEmpty) {
+    val fixedBookSection = if (sharedBookSectionTag.nonEmpty) {
       sharedBookSectionTag.headOption
     } else if (r2BookSection.nonEmpty) {
       r2BookSection.headOption
@@ -64,12 +97,21 @@ object Representation {
     } else {
       None
     }
+
+    (fixedBook, fixedBookSection)
+  }
+
+  private def fixMainTags(r2Diff:Set[Tagging],
+                          flexiDiff:Set[Tagging],
+                          r2Original: R2Tags,
+                          flexiOriginal: FlexiTags,
+                          tagMigrationCache: Map[Long, Tagging]): List[Tagging] = {
     // Tags
-    val r2Tags = discrepancy._1.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+    val r2Tags = r2Diff.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
       (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
-    val flexiTags = discrepancy._2.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
+    val flexiTags = flexiDiff.filterNot(t => (t.tagType == TagType.Book) || (t.tagType == TagType.BookSection) ||
       (t.tagType == TagType.Contributor) || (t.tagType == TagType.Publication))
-    val sharedTags = content.map(c => c.r2Tags.other intersect c.flexiTags.other)
+    val sharedTags = r2Original.other intersect flexiOriginal.other
 
     val updatedFlexiTags = flexiTags.map( t => t.tagId match {
       case id if (tagMigrationCache.contains(id)) => {
@@ -78,6 +120,7 @@ object Representation {
       }
       case _ => t
     }).filter(_.tag.existInR2.getOrElse(false))
+
     // fix lead tag discrepancy among tags with migrated section
     val tagsOnlyInFlexi = updatedFlexiTags.groupBy(_.tagId)
     val updatedR2Tags = r2Tags.map { r2 =>
@@ -92,13 +135,11 @@ object Representation {
 
     // R2 has now the correct representation of migrated tags and lead tags discrepancy
     val ft = updatedFlexiTags.filterNot(t => updatedR2Tags.exists(_.tagId == t.tagId))
-    // Preserve the original order (R2 order)
-    val r2OriginalTags = content.map(_.r2Tags).get
 
     val orderedUpdatedTags = for {
-      t <- r2OriginalTags.other
+      t <- r2Original.other
 
-      ut = if (sharedTags.getOrElse(List.empty[Tagging]).contains(t)) {
+      ut = if (sharedTags.contains(t)) {
         Some(t)
       } else if (updatedR2Tags.map(_.tagId).contains(t.tagId)) {
         updatedR2Tags.find(_.tagId == t.tagId)
@@ -107,9 +148,7 @@ object Representation {
       }
     } yield ut
 
-    val tags = orderedUpdatedTags.filter(_.isDefined).map(_.get) ++ updatedR2Tags ++ ft  ++ extraPublicationTags
-
-    FlexiTags(tags.distinct, contributors, publication.toList, book.toList, bookSection.toList)
+    orderedUpdatedTags.filter(_.isDefined).map(_.get) ++ updatedR2Tags ++ ft
   }
 
   implicit val SectionWrites = Json.writes[Section]
@@ -136,22 +175,19 @@ object Representation {
       }
   }
 
-  def jsonTagMapper (contentList: List[Content], discrepancyFix: Map[ContentId, FlexiTags]): List[JsObject] = contentList.filter ( c =>
-    discrepancyFix.contains(c.contentId)).map { content =>
-    val alltags = discrepancyFix.get(content.contentId).get
-
+  def jsonTagMapper (content: Content, tags: FlexiTags): JsObject = {
     Json.obj(
       "pageId" -> content.pageid,
       "contentId" -> content.contentId,
       "lastModifiedFlexi" -> content.lastModifiedFlexi,
       "lastModifiedR2" -> content.lastModifiedR2,
       "taxonomy" -> Json.obj(
-        "tags" -> alltags.other.map(Json.toJson(_)(TaggingWritesWithLead)),
-        "contributors" -> alltags.contributors,
-        "publication" -> alltags.publications.headOption,
+        "tags" -> tags.other.map(Json.toJson(_)(TaggingWritesWithLead)),
+        "contributors" -> tags.contributors,
+        "publication" -> tags.publications.headOption,
         "newspaper" -> Json.obj(
-          "book" -> alltags.book.headOption,
-          "bookSection" -> alltags.bookSection.headOption
+          "book" -> tags.book.headOption,
+          "bookSection" -> tags.bookSection.headOption
         )
       )
     )
