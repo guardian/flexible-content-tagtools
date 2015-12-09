@@ -293,9 +293,13 @@ object TagDiffer extends DatabaseComponent {
         }
 
         List(
-          JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping),
-          CSVFileResult(s"${category.toString}-compare-decuplicated-content-mapping.csv", "Flexible, R2, Correct", lines.take(50))
-        )
+          JSONFileResult(s"${category.toString}-correct-tags-mapping.txt", mapping)
+        ) ++ lines.grouped(10000).zipWithIndex.map{ case (groupedLines, index) =>
+          val groupedLineList = groupedLines.toList
+          val from = index * 10000
+          val to = from + groupedLineList.size - 1
+          CSVFileResult(s"${category.toString}-compare-deduplicated-content-mapping-$from-$to.csv", "Flexible, R2, Correct", groupedLineList)
+        }
       }
     }
   }

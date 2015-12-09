@@ -67,7 +67,7 @@ object FileCache {
   // Get data from cache file
   def sourceContentFromDisk(filePrefix: String): Map[Category, List[Content]] = {
     val categories: Set[Category] = ContentCategory.values.toSet
-    categories.filter(_ == ContentCategory.Live).map { category =>
+    categories.map { category =>
       val file = s"$filePrefix-${category.toString}.cache"
       System.err.println(s"Attempting to read and parse content from $file")
       val contentLines = Source.fromFile(file).getLines()
