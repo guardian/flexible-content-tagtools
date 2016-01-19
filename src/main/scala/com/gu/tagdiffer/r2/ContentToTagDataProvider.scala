@@ -1,6 +1,9 @@
 package com.gu.tagdiffer.r2
 
-import com.gu.tagdiffer.index.model.{Section, TagType}
+import java.lang.Exception
+import com.gu.tagdiffer.index.model.TagAuditOperation
+import com.gu.tagdiffer.index.model.TagAuditOperation.TagAuditOperation
+import com.gu.tagdiffer.index.model.{TagAuditOperation, Section, TagType, TagAudit}
 import com.gu.tagdiffer.index.model.TagType.TagType
 import com.gu.tagdiffer.flexible._
 import org.joda.time.DateTime
@@ -29,6 +32,12 @@ case class ContentInfo (pageAndContentId: (Long, Long), lastModified: DateTime)
 
  class DraftPageAndContentIdDataProvider(database: Database)
   extends ContentToTagDataProvider(database, "sql/draft-pageId-contentId-query.sql")
+
+ class MergedTagDataProvider(database: Database)
+  extends ContentToTagDataProvider(database, "sql/tag-audit-merged-tags-query.sql")
+
+class DeletedTagDataProvider(database: Database)
+  extends ContentToTagDataProvider(database, "sql/tag-audit-deleted-tags-query.sql")
 
 sealed abstract class ContentToTagDataProvider(database: Database, queryFilename: String) {
 
@@ -64,11 +73,24 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
     id -> R2DbTag(tagType, internal_name, external_name, slug, section)
   }
 
+  protected def tagAuditFromRow(row:Row): (Long, TagAudit) = {
+    def makeTagAuditOperation(op : String) : TagAuditOperation = op match {
+      case ("merge") => TagAuditOperation.Merge
+      case ("delete") => TagAuditOperation.Delete
+      case _ => throw new scala.Exception("Unknown tag type")
+    }
+    (row("old_tag_id").long, TagAudit(row("id").long, makeTagAuditOperation(row("operation").string), row("performed_on").jodaDateTime, row("new_tag_id").nullableLong, row("old_tag_id").long))
+  }
+
+  protected def oldTagIdFromTagAuditRow(row:Row): Long = row("old_tag_id").long
+
+  protected def oldIdToNewIdFromTagAuditRow(row:Row) : (Long, Long) = (row("old_tag_id").long, row("new_tag_id").long)
+
   protected def leadTagFromRow(row: Row): (Long, Long) =
     row("content_id").long -> row("tag_id").long
 
   protected def pageContentIdLastModifiedFromRow(row: Row): ContentInfo =
-    ContentInfo((row("page_id").long -> row("content_id").long), row("last_modified").jodaDateTime)
+    ContentInfo(row("page_id").long -> row("content_id").long, row("last_modified").jodaDateTime)
 
   def getContentToTag(): Map[Long, List[ContentToTag]] = {
     val query = StoredQuery.fromClasspath(queryFilename)
@@ -114,6 +136,29 @@ sealed abstract class ContentToTagDataProvider(database: Database, queryFilename
 
     pageToContentId
   }
+
+  def getDeletedTags(): Set[Long] = {
+    val query = StoredQuery.fromClasspath(queryFilename)
+    database { con =>
+    con.query(query, oldTagIdFromTagAuditRow).toSet
+    }
+  }
+
+  def getMergedTags(): List[(Long, Long)] = {
+    val query = StoredQuery.fromClasspath(queryFilename)
+    database { con =>
+      con.query(query, oldIdToNewIdFromTagAuditRow).toList
+    }
+  }
+
+//  def getTagAudit(): List[TagAudit] = {
+//    val query = StoredQuery.fromClasspath(queryFilename)
+//
+//    val tagAudit = database { con =>
+//      con.query(query, tagAuditFromRow)
+//    }
+//    tagAudit
+//  }
 
   private def parseCmsPath(cmsPath: String): Option[String] = {
     val cmsPathPattern = """/Guardian/(.*)""".r

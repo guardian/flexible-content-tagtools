@@ -2,7 +2,11 @@ name := "tag-differ"
 
 version := "1.0"
 
+fork := true
+
 scalaVersion := "2.11.4"
+
+javaOptions in run += "-Xmx12G"
 
 resolvers ++= Seq(
     "Guardian GitHub Repository" at "http://guardian.github.io/maven/repo-releases",
@@ -17,5 +21,6 @@ libraryDependencies ++= Seq(
     "org.reactivemongo" %% "reactivemongo" % "0.10.5.0.akka23",
     "org.scalatest" % "scalatest_2.11" % "2.2.1" % "test",
     "org.scalaz" %% "scalaz-core" % "7.1.0",
-    "com.typesafe.play" %% "play-json" % "2.3.6"
+    "com.typesafe.play" %% "play-json" % "2.3.6",
+    "org.json4s" %% "json4s-native" % "3.3.0"
 )

@@ -9,7 +9,7 @@ import reactivemongo.bson.{BSONArray, BSONDateTime, BSONDocument, BSONDocumentRe
 
 import scala.util.control.NonFatal
 
-case class FlexiContent(
+case class FlexContent(
   contentId: ContentId,
   pageId: Option[String],
   contentType: String,
@@ -19,19 +19,20 @@ case class FlexiContent(
   contributorTags: Option[List[Tagging]],
   publicationTags: Option[List[Tagging]],
   bookTags: Option[List[Tagging]],
-  sectionTags: Option[List[Tagging]]
+  sectionTags: Option[List[Tagging]],
+  newspaperPublicationTags: Option[List[Tagging]]
 )
 
-object FlexiContent {
-  implicit object ComposerContentBSONRreader extends BSONDocumentReader[FlexiContent] {
-    def read(doc: BSONDocument): FlexiContent = {
+object FlexContent {
+  implicit object ComposerContentBSONRreader extends BSONDocumentReader[FlexContent] {
+    def read(doc: BSONDocument): FlexContent = {
 
       val contentId = doc.getAs[ContentId]("_id").get
       try {
         val taxonomy = doc.getAs[BSONDocument]("taxonomy")
         val newspaper = taxonomy.flatMap(_.getAs[BSONDocument]("newspaper"))
         val contentChangeDetails = doc.getAs[BSONDocument]("contentChangeDetails").flatMap(c => c.getAs[BSONDocument]("created")).get
-        FlexiContent(
+        FlexContent(
         contentId,
         doc.getAs[BSONDocument]("identifiers").flatMap(_.getAs[String]("pageId")).map(i => i),
         doc.getAs[String]("type").get,
@@ -61,6 +62,13 @@ object FlexiContent {
             }
           }
         }, {
+//            for {
+//              publicationTag <- taxonomy.flatMap(_.getAs[BSONDocument]("publication"))
+//              newspaperPublicationTag <- newspaper.flatMap(_.getAs[BSONDocument]("publication"))
+//            } yield List(
+//              extractTagInformation(publicationTag, publicationTag.getAs[BSONDocument]("section").get).get,
+//              extractTagInformation(newspaperPublicationTag, newspaperPublicationTag.getAs[BSONDocument]("section").get).get
+//              )
           taxonomy.flatMap(_.getAs[BSONDocument]("publication")).map { pub =>
             List(extractTagInformation(pub, pub.getAs[BSONDocument]("section").get).get)
           }
@@ -69,10 +77,14 @@ object FlexiContent {
             List(extractTagInformation(book, book.getAs[BSONDocument]("section").get).get)
           }
         }, {
-          newspaper.flatMap(_.getAs[BSONDocument]("bookSection")).map { book =>
-            List(extractTagInformation(book, book.getAs[BSONDocument]("section").get).get)
+          newspaper.flatMap(_.getAs[BSONDocument]("bookSection")).map { bookSection =>
+            List(extractTagInformation(bookSection, bookSection.getAs[BSONDocument]("section").get).get)
           }
-        }
+        }, {
+            newspaper.flatMap(_.getAs[BSONDocument]("publication")).map { newspaperPublication =>
+              List(extractTagInformation(newspaperPublication, newspaperPublication.getAs[BSONDocument]("section").get).get)
+            }
+          }
         )
       } catch {
         case NonFatal(e) =>

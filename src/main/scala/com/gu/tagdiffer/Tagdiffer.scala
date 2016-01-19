@@ -35,7 +35,7 @@ object TagDiffer extends DatabaseComponent {
   case class ScreenResult(lines:Iterable[String]) extends ComparatorResult
 
   case class TagCorrected(tags: List[Tagging], contributors: List[Tagging],
-                          publication: Option[Tagging], book: Option[Tagging], bookSection: Option[Tagging])
+                          publication: Option[Tagging], book: Option[Tagging], bookSection: Option[Tagging], newspaperPublication: Option[Tagging])
 
   trait ContentComparator {
     def compare(contentMap: Map[Category, List[Content]], oldToNewTagIdMap: Map[Long, Long]): Iterable[ComparatorResult]
@@ -167,7 +167,27 @@ object TagDiffer extends DatabaseComponent {
     }
   }
 
-  def computeOldToNewTagIdMap(contentMap: Map[Category, List[Content]]):Map[Long, Long] = {
+  def collateMergeTagOperations(orderedMergeOperations: List[(Long, Long)]) : List[(Long, Long)] = {
+    // check that in order...
+
+    def getFinalNewTagId(newTag:Long, futureMergeOperations: List[(Long, Long)]) : Long = {
+      val chainedMergeAndFollowingMerges = orderedMergeOperations.tail.dropWhile(ta => ta._1 != orderedMergeOperations.head._2)
+      if (chainedMergeAndFollowingMerges.isEmpty) newTag
+      else getFinalNewTagId(chainedMergeAndFollowingMerges.head._2, chainedMergeAndFollowingMerges.tail)
+    }
+
+    if (orderedMergeOperations.tail.isEmpty) orderedMergeOperations
+    else (orderedMergeOperations.head._1, getFinalNewTagId(orderedMergeOperations.head._2, orderedMergeOperations.tail)) +: collateMergeTagOperations(orderedMergeOperations.tail)
+  }
+
+
+
+  def tagAuditLookup(oldTagId : Long, mergeTagOperations : Map[Long, Long], deletedTags: Set[Long]) : Long = {
+    val mergedTag = if (mergeTagOperations.contains(oldTagId)) mergeTagOperations(oldTagId) else oldTagId
+    if (deletedTags.contains(mergedTag)) 0 else mergedTag
+  }
+
+  def computeOldToNewTagIdMap(contentMap: Map[Category, List[Content]]) :Map[Long, Long] = {
     val deltas = contentMap.flatMap { case (category, contentList) =>
       r2FlexDiffTuples(contentList).filterNot { case (r2Only, flexOnly, contentId) =>
         r2Only.map(_.setIdToZero) == flexOnly.map(_.setIdToZero)
@@ -175,16 +195,16 @@ object TagDiffer extends DatabaseComponent {
     }
 
     deltas.flatMap { e =>
-      val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
+//      val r2OnlyKeyword = e._1.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
       val flexOnlyKeyword = e._2.filter(tag => tag.tagType != Publication && tag.tagType != Contributor)
 
       val diffIdOnly = for {
-        r2t <- r2OnlyKeyword; ft <- flexOnlyKeyword
+//        r2t <- r2OnlyKeyword;
+        ft <- flexOnlyKeyword
 
-        if ((r2t.internalName == ft.internalName)
-          && (r2t.tagId != ft.tagId))
       } yield {
-        ft.tagId -> r2t.tagId
+          // ft.tagId -> r2.tagId
+        ft.tagId -> tagAuditLookup(ft.tagId, collateMergeTagOperations(R2.cache.mergeTagOperations).toMap, R2.cache.deletedTags)
       }
 
       diffIdOnly.toSet
@@ -193,18 +213,33 @@ object TagDiffer extends DatabaseComponent {
 
   def mapSectionMigrationTags(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap:Map[Long, Long]): Map[Long, Tagging] = {
     val r2Tags = deltas.flatMap(_._1).toSet
-    val flexiTags = deltas.flatMap(_._2).toSet
+    val flexTags = deltas.flatMap(_._2).toSet
 
-    oldToNewTagIdMap map { case(oldId, newId) =>
-      val r2t = r2Tags.find(_.tagId == newId).get
-      val ftOpt = flexiTags.find { tag =>
-        (tag.tagId == oldId) && (tag.section.id != r2t.section.id)
-      }.orElse {
-        flexiTags.find(_.tagId == oldId)
-      }
+    println("R2 collection size: " + r2Tags.size + "flex colllection size: " + flexTags.size)
+    println(r2Tags.size)
+    println(flexTags.size)
+    println("Deltas length: " + deltas.length)
 
-      ftOpt.map(_.tagId).get -> r2t
+    // print out any tags not found in the r2tags/flexTags collections
+    oldToNewTagIdMap foreach { case(oldId, newId) =>
+      val r2t = r2Tags.find(_.tagId == newId)
+      if (r2t.isEmpty) println("NewId not found: " + newId)
+      val ftOpt = flexTags.find(_.tagId == oldId)
+      if (ftOpt.isEmpty) println("OldId not found: " + oldId)
     }
+
+    println("Starting map")
+
+    val flexTagIdsToR2TagsMap = oldToNewTagIdMap map { case(oldId, newId) =>
+      for {
+        r2TagWithNewId <- r2Tags.find(_.tagId == newId)
+        flexTagWithOldId <- flexTags.find { tag =>
+                                            (tag.tagId == oldId) && (tag.section.id != r2TagWithNewId.section.id)
+                                          }.orElse(flexTags.find(_.tagId == oldId))
+      } yield flexTagWithOldId.tagId -> r2TagWithNewId
+    }
+
+    flexTagIdsToR2TagsMap.flatten.toMap
   }
 
   def compareAndMapDifferentTagIds(deltas:List[(Set[Tagging], Set[Tagging])], oldToNewTagIdMap: Map[Long, Long], name:String): ComparatorResult = {
@@ -279,8 +314,8 @@ object TagDiffer extends DatabaseComponent {
         val tagToContent = contentList.groupBy(c => (c.flexiTags, c.r2Tags))
 
         val proposedTagInfoToContent = tagToContent.flatMap { case ((flexTags, r2Tags), content) =>
-          val proposedFlexiTags: FlexiTags = Representation.correctFlexiRepresentation(flexTags, r2Tags, tagMigrationCache)
-          if (proposedFlexiTags == flexTags && flexTags.setEquals(r2Tags)) None else Some((flexTags, r2Tags, proposedFlexiTags) -> content)
+          val proposedFlexTags: FlexiTags = Representation.correctFlexiRepresentation(flexTags, r2Tags, tagMigrationCache)
+          if (proposedFlexTags == flexTags && flexTags.setEquals(r2Tags)) None else Some((flexTags, r2Tags, proposedFlexTags) -> content)
         }
 
         val mapping = proposedTagInfoToContent.flatMap { case ((_, _, proposedTags), content) =>
@@ -305,16 +340,20 @@ object TagDiffer extends DatabaseComponent {
   }
 
   // The list of comparators to apply to data
-  val comparators: List[ContentComparator] = List(correctTagMapping)
+
 
   def main(args: Array[String]): Unit = {
     new File(PREFIX).mkdir()
     val filePrefix = s"$PREFIX/content"
 
-    // try to open cache file otherwise get data from the databases and cache them
+    // initialise R2
+
+
+    // try to open cache file, otherwise get data from the databases and cache them
     val dataFuture = Future{FileCache.sourceContentFromDisk(filePrefix)}.recoverWith {
       case NonFatal(e) =>
         R2.init()
+        FileCache.serializeR2CacheToDisk()
         val content = for {
           liveContent <- mongoConnect.liveContent()
           draftContent <- mongoConnect.draftContent()
@@ -329,7 +368,9 @@ object TagDiffer extends DatabaseComponent {
     val result = dataFuture.map { data =>
       // compute known map of old to new tags
       val oldToNewTagIdMap: Map[Long, Long] = computeOldToNewTagIdMap(data)
+      println(oldToNewTagIdMap)
 
+      val comparators: List[ContentComparator] = List(correctTagMapping, publicationTagDiffs)
       comparators.foreach{ comparator =>
         try {
           comparator.compare(data, oldToNewTagIdMap).foreach {

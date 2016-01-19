@@ -1,7 +1,9 @@
 package com.gu.tagdiffer.index.model
 
+import com.gu.tagdiffer.index.model.TagAuditOperation.TagAuditOperation
 import com.gu.tagdiffer.index.model.TagType.TagType
 import com.gu.tagdiffer.r2.R2
+import org.joda.time.DateTime
 
 object TagType extends Enumeration {
   type TagType = Value
@@ -54,3 +56,11 @@ object Tag {
     Tag(tagId, tagType, internalName, externalName, section, Some(exist))
   }
 }
+
+object TagAuditOperation extends Enumeration {
+  type TagAuditOperation = Value
+  val Delete = Value("delete")
+  val Merge = Value("merge")
+}
+
+case class TagAudit(tagAuditId: Long, operation: TagAuditOperation, performedOn: DateTime, newTagId : Option[Long], oldTagId : Long)

@@ -20,7 +20,7 @@ object Representation {
       // Add extraPublicationTag to mainTags
       val tags = mainTags ++ publication._2
 
-      FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList)
+      FlexiTags(tags.distinct, contributors, publication._1.toList, newspaper._1.toList, newspaper._2.toList, newspaper._3.toList)
     }
   }
 
@@ -47,7 +47,7 @@ object Representation {
                                  r2Original: R2Tags,
                                  flexiOriginal: FlexiTags): (Option[Tagging], Set[Tagging]) = {
     val r2Publication = r2Diff.filter(_.tagType == TagType.Publication)
-    val flexiPublication = flexiDiff.filter(t => (t.tagType == TagType.Publication) && (t.tag.existInR2.getOrElse(false)))
+    val flexiPublication = flexiDiff.filter(t => (t.tagType == TagType.Publication) && t.tag.existInR2.getOrElse(false))
     val sharedPublicationTag = r2Original.publications intersect flexiOriginal.publications
 
     // R2 can have multiple publication tags. Choose the one in common if so
@@ -61,8 +61,8 @@ object Representation {
       None
     }
 
-    val extraPublicationTags = (r2Publication - fixedPublicationTag.getOrElse(null)) ++
-      (sharedPublicationTag.toSet - fixedPublicationTag.getOrElse(null)) // only r2 can have multiple pub tags
+    val sharedNewspaperPublicationTag = (r2Original.publications intersect flexiOriginal.newspaperPublication).headOption.orNull
+    val extraPublicationTags = r2Publication - fixedPublicationTag.orNull - sharedNewspaperPublicationTag
 
     (fixedPublicationTag, extraPublicationTags)
   }
@@ -70,13 +70,15 @@ object Representation {
   private def fixNewspaperTags(r2Diff:Set[Tagging],
                                flexiDiff:Set[Tagging],
                                r2Original: R2Tags,
-                               flexiOriginal: FlexiTags): (Option[Tagging], Option[Tagging]) = {
+                               flexiOriginal: FlexiTags): (Option[Tagging], Option[Tagging], Option[Tagging]) = {
     val r2Book = r2Diff.filter(_.tagType == TagType.Book)
     val r2BookSection = r2Diff.filter(_.tagType == TagType.BookSection)
     val flexiBook = flexiDiff.filter(_.tagType == TagType.Book)
     val flexiBookSection = flexiDiff.filter(_.tagType == TagType.BookSection)
     val sharedBookTag = r2Original.book intersect flexiOriginal.book
     val sharedBookSectionTag = r2Original.bookSection intersect flexiOriginal.bookSection
+
+    val sharedNewspaperPublicationTag = r2Original.publications intersect flexiOriginal.newspaperPublication
 
     val fixedBook = if (sharedBookTag.nonEmpty) {
       sharedBookTag.headOption
@@ -98,7 +100,13 @@ object Representation {
       None
     }
 
-    (fixedBook, fixedBookSection)
+    val fixedNewspaperPublication = if (sharedNewspaperPublicationTag.nonEmpty) {
+      sharedNewspaperPublicationTag.headOption
+    } else if (flexiOriginal.newspaperPublication.nonEmpty) {
+      flexiOriginal.newspaperPublication.headOption
+    } else None
+
+    (fixedBook, fixedBookSection, fixedNewspaperPublication)
   }
 
   private def fixMainTags(r2Diff:Set[Tagging],
@@ -187,7 +195,8 @@ object Representation {
         "publication" -> tags.publications.headOption,
         "newspaper" -> Json.obj(
           "book" -> tags.book.headOption,
-          "bookSection" -> tags.bookSection.headOption
+          "bookSection" -> tags.bookSection.headOption,
+          "publicaation" -> tags.newspaperPublication.headOption
         )
       )
     )

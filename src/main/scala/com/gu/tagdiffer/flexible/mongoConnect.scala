@@ -17,13 +17,14 @@ object mongoConnect extends Loggable {
   // Get an instance of the driver
   val driver = new MongoDriver
   val uri = MongoConnection.parseURI(Config.mongoURI)
-  val connection = uri.map(driver.connection)
+//  val connectionOptions = MongoConnectionOptions(readPreference=secondaryPreferred)
+  val connection = uri.map(uri => driver.connection(uri))
 
   // Get an instance of db
-  val db = connection.map(_("flexible-content"))
+  val db = connection.map(_("flexible_content"))
 
   // We get a BSONCollection by default
-  // adding tipes solves an issue with scala plugin (https://groups.google.com/forum/#!topic/reactivemongo/7b1waOYgTMA)
+  // adding types solves an issue with scala plugin (https://groups.google.com/forum/#!topic/reactivemongo/7b1waOYgTMA)
   val live: Try[BSONCollection] = db.map(_("liveContent"))
   val draft: Try[BSONCollection] = db.map(_("draftContent"))
 
@@ -33,23 +34,23 @@ object mongoConnect extends Loggable {
 
   def liveContent(): Future[List[Content]] = {
 
-    val enumeratorOfFlexiContent = live.get.find(query, filter).options(QueryOpts(batchSizeN = 100)).cursor[FlexiContent].enumerate()
+    val enumeratorOfFlexContent = live.get.find(query, filter).options(QueryOpts(batchSizeN = 100)).cursor[FlexContent].enumerate()
 
-    getContent(enumeratorOfFlexiContent, ContentCategory.Live)
+    getContent(enumeratorOfFlexContent, ContentCategory.Live)
   }
 
   def draftContent(): Future[List[Content]] = {
-    val enumeratorOfFlexiContent = draft.get.find(query, filter).options(QueryOpts(batchSizeN = 100)).cursor[FlexiContent].enumerate()
+    val enumeratorOfFlexContent = draft.get.find(query, filter).options(QueryOpts(batchSizeN = 100)).cursor[FlexContent].enumerate()
 
-    getContent(enumeratorOfFlexiContent, ContentCategory.Draft)
+    getContent(enumeratorOfFlexContent, ContentCategory.Draft)
   }
 
- private def getContent(enumerator: Enumerator[FlexiContent], category: Category): Future[List[Content]] = {
-   val processDocuments: Iteratee[FlexiContent, List[Content]] = Iteratee.fold(List.empty[Content]) { (acc, content) =>
+ private def getContent(enumerator: Enumerator[FlexContent], category: Category): Future[List[Content]] = {
+   val processDocuments: Iteratee[FlexContent, List[Content]] = Iteratee.fold(List.empty[Content]) { (acc, content) =>
      val c =  try{
          val flexiTags = FlexiTags(content.mainTags.getOrElse(List()), content.contributorTags.getOrElse(List()),
            content.publicationTags.getOrElse(List()), content.bookTags.getOrElse(List()),
-           content.sectionTags.getOrElse(List()))
+           content.sectionTags.getOrElse(List()), content.newspaperPublicationTags.getOrElse(List()))
          Content.lookupR2(content.pageId.get, content.contentId, content.contentType, content.created, content.lastModified, category, flexiTags)
        } catch {
          case NonFatal(e) => None

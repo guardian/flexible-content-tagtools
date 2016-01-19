@@ -1,15 +1,21 @@
 package com.gu.tagdiffer.cache
 
-import java.io.PrintWriter
+import java.io.{PrintWriter, ObjectInputStream}
 import java.util.NoSuchElementException
 
 import com.gu.tagdiffer.index.model._
 import com.gu.tagdiffer.index.model.TagType._
 import com.gu.tagdiffer.index.model.ContentCategory._
+import com.gu.tagdiffer.r2.R2
 import play.api.libs.json._
 
 import scala.io.Source
 import scala.util.control.NonFatal
+
+import org.json4s._
+import org.json4s.native.Serialization
+import org.json4s.native.Serialization.{read, write}
+
 
 object FileCache {
   implicit val ContentCategoryFormats = new Format[Category] {
@@ -43,6 +49,27 @@ object FileCache {
 
     def writes(o: TagType): JsValue = JsString(o.toString)
   }
+
+  def serializeR2CacheToDisk(): Unit = {
+    implicit val formats = Serialization.formats(NoTypeHints)
+    val r2CacheAsJson = write(R2.cache)
+    val file = s"r2cache.cache"
+    println("Writing r2 cache to disk")
+    val writer = new PrintWriter(file)
+    writer.println(r2CacheAsJson)
+    writer.close()
+    println("Finished caching r2 to disk")
+  }
+
+  def readR2CacheFromDisk: Iterator[R2] = {
+    implicit val formats = Serialization.formats(NoTypeHints)
+    val file = s"r2cache.cache"
+    val r2CacheAsJson = Source.fromFile(file).getLines()
+    println("No of lines: " + r2CacheAsJson.size)
+    val r2 = r2CacheAsJson.map(r2c => read[R2](r2c))
+    r2
+  }
+
 
   implicit val SectionFormats = Json.format[Section]
   implicit val TagFormats = Json.format[Tag]

@@ -69,8 +69,10 @@ trait Tags {
   def other: List[Tagging]
   def contributors: List[Tagging]
   def publications: List[Tagging]
+  // these are lists even though there's only 1 of each tag in flex to support the R2 model
   def book: List[Tagging]
   def bookSection: List[Tagging]
+//  def newspaperPublication: List[Tagging]
 
   /**
    * Returns a tuple of two sets, the first containing tags that exist in this set but not other and the second
@@ -100,7 +102,7 @@ case class R2Tags(allTags: List[Tagging]) extends Tags {
   override def toString = allTags.map(_.toString).mkString("\n")
 }
 
-case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publications: List[Tagging], book: List[Tagging], bookSection: List[Tagging]) extends Tags {
+case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publications: List[Tagging], book: List[Tagging], bookSection: List[Tagging], newspaperPublication: List[Tagging]) extends Tags {
   def stringWithDiffs(original: FlexiTags): String = {
     val (onlyNew, onlyOriginal) = diff(original)
     val originalSet = original.allTags.toSet
@@ -113,7 +115,7 @@ case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publicat
     }.mkString("\n")
   }
 
-  lazy val allTags = other ::: contributors ::: publications ::: book ::: bookSection
+  lazy val allTags = other ::: contributors ::: publications ::: book ::: bookSection ::: newspaperPublication
 
   def tagToStringWithMarker (tags: List[Tagging], marker: String): List[(Tagging,String)] = tags.map( t => (t,marker))
   lazy val tagMarkerTuples =
@@ -121,7 +123,8 @@ case class FlexiTags(other: List[Tagging], contributors: List[Tagging], publicat
     tagToStringWithMarker(contributors, "C") :::
     tagToStringWithMarker(publications, "P") :::
     tagToStringWithMarker(book, "B") :::
-    tagToStringWithMarker(bookSection, "S")
+    tagToStringWithMarker(bookSection, "S") :::
+    tagToStringWithMarker(newspaperPublication, "NP")
 
   override def toString = tagMarkerTuples.map{ case (tag, marker) => s"[$marker] $tag" }.mkString("\n")
 

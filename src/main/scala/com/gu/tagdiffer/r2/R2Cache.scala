@@ -1,6 +1,6 @@
 package com.gu.tagdiffer.r2
 
-import com.gu.tagdiffer.index.model.{Tag, Tagging}
+import com.gu.tagdiffer.index.model.{Tag, Tagging, TagAudit}
 import org.joda.time.DateTime
 
 case class R2Tag()
@@ -10,7 +10,7 @@ case class R2Cache(contentPageId: Map[Long, Long],
                    contentToTag: Map[Long, List[ContentToTag]],
                    lastModified: Map[Long, DateTime])
 
-case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache) {
+case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2Cache, deletedTags: Set[Long], mergeTagOperations: List[(Long, Long)]) {
 
   lazy val tagIdToTag = tagMapper.map { case (id, r2Tag) =>
     id -> Tag(id, r2Tag.tagType, r2Tag.internalName, r2Tag.externalName, r2Tag.section, existInR2 = Some(true))
@@ -74,7 +74,10 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
       val livectt = retrieveTagToLiveContentFromR2()
       System.err.println(s"Cached live content tag map (${livectt.size})")
       val draftctt = retrieveTagToDraftContentFromR2()
-      System.err.println(s"Cached live content tag map (${draftctt.size})")
+      System.err.println(s"Cached draft content tag map (${draftctt.size})")
+      val deletedTags = retrieveTagAuditDeletedTagsFromR2()
+      val mergedTags = retrieveTagAuditMergedTagsFromR2()
+      System.err.println(s"Retrieved tag audit from r2, ${deletedTags.size} tags to delete, ${mergedTags.length} merge operations")
       val liveCache = R2Cache(livecpi.map(_.pageAndContentId).toMap,
                               liveLead,
                               livectt,
@@ -83,7 +86,7 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
                                draftLead,
                                draftctt,
                                draftcpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
-      internalCache = Some(R2(tags, liveCache, draftCache))
+      internalCache = Some(R2(tags, liveCache, draftCache, deletedTags, mergedTags))
     }
 
   def cache: R2 = internalCache.getOrElse(throw new IllegalStateException("R2 cache not initialised yet"))
@@ -122,4 +125,14 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
     val provider = new DraftContentToTagDataProvider(database)
     provider.getContentToTag()
   }
+
+    private def retrieveTagAuditDeletedTagsFromR2(): Set[Long] = {
+      val provider = new DeletedTagDataProvider(database)
+      provider.getDeletedTags()
+    }
+
+    private def retrieveTagAuditMergedTagsFromR2(): List[(Long, Long)] = {
+      val provider = new MergedTagDataProvider(database)
+      provider.getMergedTags()
+    }
 }
