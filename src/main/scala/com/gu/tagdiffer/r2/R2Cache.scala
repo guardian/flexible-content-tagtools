@@ -79,15 +79,17 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
       System.err.println(s"Cached tag delete audit (${deletedTags.size})")
       val mergedTags = retrieveTagAuditMergedTagsFromR2()
       System.err.println(s"Cached tag merged from r2 ${mergedTags.length}")
-      val liveCache = R2Cache(livecpi.map(_.pageAndContentId).toMap,
-                              liveLead,
-                              livectt,
-                              livecpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
-      val draftCache = R2Cache(draftcpi.map(_.pageAndContentId).toMap,
-                               draftLead,
-                               draftctt,
-                               draftcpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
-      internalCache = Some(R2(tags, liveCache, draftCache, deletedTags, mergedTags))
+//      val liveCache = R2Cache(livecpi.map(_.pageAndContentId).toMap,
+//                              liveLead,
+//                              livectt,
+//                              livecpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
+//      val draftCache = R2Cache(draftcpi.map(_.pageAndContentId).toMap,
+//                               draftLead,
+//                               draftctt,
+//                               draftcpi.map(ci => (ci.pageAndContentId._2, ci.lastModified)).toMap)
+//
+//
+//      internalCache = Some(R2(tags, liveCache, draftCache, deletedTags, mergedTags))
     }
 
   def cache: R2 = internalCache.getOrElse(throw new IllegalStateException("R2 cache not initialised yet"))
