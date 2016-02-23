@@ -1,1 +1,1 @@
-select old_tag_id from tag_audit where operation = 'delete';
+select old_tag_id from tag_audit where operation = 'delete'
