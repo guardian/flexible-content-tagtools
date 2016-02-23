@@ -76,8 +76,9 @@ case class R2(tagMapper: Map[Long, R2DbTag], liveCache: R2Cache, draftCache: R2C
       val draftctt = retrieveTagToDraftContentFromR2()
       System.err.println(s"Cached draft content tag map (${draftctt.size})")
       val deletedTags = retrieveTagAuditDeletedTagsFromR2()
+      System.err.println(s"Cached tag delete audit (${deletedTags.size})")
       val mergedTags = retrieveTagAuditMergedTagsFromR2()
-      System.err.println(s"Retrieved tag audit from r2, ${deletedTags.size} tags to delete, ${mergedTags.length} merge operations")
+      System.err.println(s"Cached tag merged from r2 ${mergedTags.length}")
       val liveCache = R2Cache(livecpi.map(_.pageAndContentId).toMap,
                               liveLead,
                               livectt,
