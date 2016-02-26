@@ -10,6 +10,7 @@ import reactivemongo.api.collections.default.BSONCollection
 import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.concurrent.duration._
 import scala.util.control.NonFatal
 import scala.util.Try
 
@@ -20,8 +21,17 @@ object mongoConnect extends Loggable {
 //  val connectionOptions = MongoConnectionOptions(readPreference=secondaryPreferred)
   val connection = uri.map(uri => driver.connection(uri))
 
+
+  val strategy =
+    FailoverStrategy(
+      initialDelay = 10 seconds,
+      retries = 20,
+      delayFactor =
+        attemptNumber => 1 + attemptNumber * 0.5
+    )
+
   // Get an instance of db
-  val db = connection.map(_("flexible_content"))
+  val db = connection.map(_("flexible_content", strategy))
 
   // We get a BSONCollection by default
   // adding types solves an issue with scala plugin (https://groups.google.com/forum/#!topic/reactivemongo/7b1waOYgTMA)
