@@ -9,7 +9,7 @@ scalaVersion := "2.11.4"
 javaOptions in run += "-Xmx12G"
 
 resolvers ++= Seq(
-    "Guardian GitHub Repository" at "http://guardian.github.io/maven/repo-releases",
+    "Guardian GitHub Repository" at "https://guardian.github.io/maven/repo-releases",
     "typesafe" at "http://repo.typesafe.com/typesafe/releases/"
 )
 
